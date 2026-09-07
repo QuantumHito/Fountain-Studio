@@ -12,6 +12,7 @@ M.ns = vim.api.nvim_create_namespace("fountain-studio")
 
 local HL = {
   scene_heading = "FountainSceneHeading",
+  mini_slug = "FountainMiniSlug",
   character = "FountainCharacter",
   parenthetical = "FountainParenthetical",
   transition = "FountainTransition",
@@ -49,7 +50,7 @@ function M.marker_ranges(kind, line)
     end
   end
 
-  if kind == "scene_heading" and line:sub(1, 1) == "." and line:sub(2, 2) ~= "." then
+  if (kind == "scene_heading" or kind == "mini_slug") and line:sub(1, 1) == "." and line:sub(2, 2) ~= "." then
     add("^%.")
   elseif kind == "action" and line:sub(1, 1) == "!" then
     add("^!")

@@ -82,7 +82,10 @@ function M.layout()
       row = top,
       col = 0,
       border = "none",
-      focusable = false,
+      -- Focusable so that a click on the blank margins lands here rather than
+      -- falling through to the ordinary window behind, which would end the
+      -- layout. WinEnter below hands the cursor straight back to the page.
+      focusable = true,
       zindex = 40,
       style = "minimal",
     },
@@ -199,6 +202,14 @@ local function setup_autocmds()
       end
       local win = vim.api.nvim_get_current_win()
       if win == state.win then
+        return
+      end
+      if win == state.backdrop_win then
+        vim.schedule(function()
+          if M.is_open() then
+            pcall(vim.api.nvim_set_current_win, state.win)
+          end
+        end)
         return
       end
       if vim.api.nvim_win_get_config(win).relative ~= "" then

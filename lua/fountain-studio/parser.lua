@@ -73,6 +73,24 @@ local function is_transition(line, cfg)
   return false
 end
 
+-- A secondary slug line: uppercase, and one of the configured mini-slugs. The
+-- forced-element marker is allowed and ignored -- a writer who types
+-- `.MOMENTS LATER` is forcing Fountain not to read it as a character cue, which
+-- is the same thing this is for, and they still do not mean a new scene.
+local function is_mini_slug(line, cfg)
+  local text = M.plain(line):gsub("^%.", "")
+  if not is_upper(text) then
+    return false
+  end
+  local up = trim(text):upper():gsub("[%.:%-%s]+$", "")
+  for _, pattern in ipairs((cfg and cfg.mini_slugs) or {}) do
+    if up:match(pattern) then
+      return true
+    end
+  end
+  return false
+end
+
 -- A Character cue is an uppercase line preceded by a blank line and followed by
 -- a non-blank one. A trailing `^` marks dual dialogue and a trailing
 -- parenthetical extension -- (V.O.), (CONT'D) -- is part of the cue.
@@ -131,6 +149,8 @@ function M.scan(lines, opts)
 
       if line:match("^===+%s*$") then
         kind = "page_break"
+      elseif prev_blank and is_mini_slug(line, cfg) then
+        kind = "mini_slug"
       elseif first == "." and line:sub(2, 2) ~= "." then
         kind = "scene_heading"
       elseif first == "!" then

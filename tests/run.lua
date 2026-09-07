@@ -81,6 +81,23 @@ eq(kinds("\n***INT. HOUSE - DAY***\n\n", false),
 eq(kinds("\n**CUT TO:**\n\n", false), { "blank", "transition", "blank", "blank" }, "bolded transition")
 eq(kinds("\n**MAYA**\nGo home.\n", false), { "blank", "character", "dialogue", "blank" }, "bolded character cue")
 
+-- Secondary slug lines mark a jump inside a scene: not a new scene, and not a
+-- character cue for the action underneath them.
+eq(kinds("\nMOMENTS LATER\n\nShe waits.", false),
+  { "blank", "mini_slug", "blank", "action" }, "a mini-slug on its own")
+eq(kinds("\nMOMENTS LATER\nShe waits.", false),
+  { "blank", "mini_slug", "action" }, "action under a mini-slug stays action")
+eq(kinds("\n.MOMENTS LATER\n\n", false),
+  { "blank", "mini_slug", "blank", "blank" }, "a forced mini-slug is still a mini-slug")
+eq(kinds("\n**MOMENTS LATER**\n\n", false),
+  { "blank", "mini_slug", "blank", "blank" }, "a bolded mini-slug is still a mini-slug")
+eq(kinds("\nBACK TO SCENE\nHe turns.", false),
+  { "blank", "mini_slug", "action" }, "BACK TO SCENE is a mini-slug")
+eq(kinds("\nEXT. GARAGE - CONTINUOUS\n\n", false),
+  { "blank", "scene_heading", "blank", "blank" }, "a slug ending in CONTINUOUS is still a scene")
+eq(kinds("\nMAYA\nGo home.\n", false),
+  { "blank", "character", "dialogue", "blank" }, "an ordinary cue is untouched by the mini-slug rule")
+
 eq(parser.strip_markup("**INT. HOUSE**"), "INT. HOUSE", "bold markers come off")
 eq(parser.strip_markup("*a* and **b** and ***c***"), "a and b and c", "every emphasis form comes off")
 eq(parser.strip_markup("_THE END_"), "THE END", "a wrapped underline comes off")
@@ -289,6 +306,30 @@ eq(#bold_scenes, 2, "both bolded headings are found")
 eq(bold_scenes[1].text, "I. NEWSROOM - NIGHT", "the outline shows the slug, not the asterisks")
 eq(bold_scenes[2].number, 2, "bolded scenes are numbered in order")
 vim.api.nvim_buf_delete(bold_buf, { force = true })
+
+-- A mini-slug belongs to the scene it sits in, so it adds no outline entry.
+local mini_buf = vim.api.nvim_create_buf(false, true)
+vim.api.nvim_buf_set_lines(mini_buf, 0, -1, false, {
+  "INT. KITCHEN - DAY", "", "She waits.", "",
+  "MOMENTS LATER", "", "She is still waiting.", "",
+  ".LATER", "", "Still.",
+})
+local mini_scenes = outline.scan(mini_buf)
+eq(#mini_scenes, 1, "mini-slugs do not split the scene")
+eq(mini_scenes[1].text, "I. KITCHEN - DAY", "the scene is the one real slug")
+vim.api.nvim_buf_delete(mini_buf, { force = true })
+
+-- The margin keeps its distance from the page.
+local gap = page_geometry.col - (outline_geometry.col + outline_geometry.width)
+eq(gap, config.get().outline.gap, "the configured gap sits between the outline and the page")
+ok(gap >= 2, "the outline does not hug the page", gap)
+
+-- Clicking a scene sends the page there and hands focus back.
+local jump_target = outline.entry_at_row(3)
+ok(jump_target ~= nil, "there is an entry to jump to")
+outline.jump(3)
+eq(vim.api.nvim_win_get_cursor(zen.win())[1], jump_target.lnum, "the page jumps to the scene")
+eq(vim.api.nvim_get_current_win(), zen.win(), "focus goes back to the page")
 
 -- A scene the cursor is inside gets marked, and the mark follows the cursor.
 outline.mark_current(scenes[2].lnum)

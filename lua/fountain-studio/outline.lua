@@ -226,10 +226,49 @@ function M.layout()
     row = page.row,
     col = math.max(0, page.col - cfg.outline.gap - width),
     style = "minimal",
-    focusable = false,
+    focusable = true, -- so a click lands here instead of falling through
     border = "none",
     zindex = 45, -- above the backdrop, below the page
   }
+end
+
+--- The entry shown on display row `row`, if any.
+function M.entry_at_row(row)
+  return state.entries[state.rows[row]]
+end
+
+--- Put the cursor back where the writing happens.
+function M.focus_page()
+  local page = zen.win()
+  if page and vim.api.nvim_win_is_valid(page) then
+    pcall(vim.api.nvim_set_current_win, page)
+  end
+end
+
+--- Send the page to the scene on `row` of the outline, defaulting to the row
+--- the cursor -- or the click -- landed on, and hand focus back to the page.
+function M.jump(row)
+  if not M.is_open() or not state.source or not vim.api.nvim_buf_is_valid(state.source) then
+    return
+  end
+  row = row or vim.api.nvim_win_get_cursor(state.win)[1]
+  local entry = state.entries[state.rows[row]]
+  if not entry then
+    return M.focus_page()
+  end
+
+  local page = zen.win()
+  if not page or not vim.api.nvim_win_is_valid(page) then
+    return
+  end
+
+  local lnum = math.min(entry.lnum, vim.api.nvim_buf_line_count(state.source))
+  pcall(vim.api.nvim_win_set_cursor, page, { lnum, 0 })
+  vim.api.nvim_win_call(page, function()
+    vim.cmd("normal! zz")
+  end)
+  M.focus_page()
+  M.mark_current(lnum)
 end
 
 local function ensure_buffer()
@@ -240,6 +279,27 @@ local function ensure_buffer()
   vim.bo[state.buf].bufhidden = "hide"
   vim.bo[state.buf].filetype = "fountain_outline"
   vim.bo[state.buf].modifiable = false
+
+  -- A click lands the cursor on the row first, so the release does the work.
+  local function map(lhs, fn)
+    vim.keymap.set("n", lhs, fn, { buffer = state.buf, nowait = true, silent = true })
+  end
+  map("<LeftRelease>", function()
+    M.jump()
+  end)
+  map("<2-LeftMouse>", function()
+    M.jump()
+  end)
+  map("<CR>", function()
+    M.jump()
+  end)
+  map("<Esc>", function()
+    M.focus_page()
+  end)
+  map("q", function()
+    M.focus_page()
+  end)
+
   return state.buf
 end
 
