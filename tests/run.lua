@@ -68,6 +68,26 @@ eq(kinds("\nMAYA\n\n", false), { "blank", "action", "blank", "blank" }, "lone up
 eq(kinds("\nMAYA ^\nObviously.\n", false), { "blank", "character", "dialogue", "blank" }, "dual dialogue cue")
 eq(kinds("\nDANNY (O.S.)\nIt's me.\n", false), { "blank", "character", "dialogue", "blank" }, "cue with extension")
 
+-- Emphasis is markup, not part of the element: a writer who bolds their slug
+-- lines is still writing scene headings.
+eq(kinds("\n**INT. NEWSROOM - NIGHT**\n\nHe waits.", false),
+  { "blank", "scene_heading", "blank", "action" }, "bolded scene heading")
+eq(kinds("\n**INT. NEWSROOM - NIGHT**\nHe waits.", false),
+  { "blank", "scene_heading", "action" }, "bolded heading with action right under it")
+eq(kinds("\n*EXT. GARAGE - DAY*\n\n", false),
+  { "blank", "scene_heading", "blank", "blank" }, "italicised scene heading")
+eq(kinds("\n***INT. HOUSE - DAY***\n\n", false),
+  { "blank", "scene_heading", "blank", "blank" }, "bold-italic scene heading")
+eq(kinds("\n**CUT TO:**\n\n", false), { "blank", "transition", "blank", "blank" }, "bolded transition")
+eq(kinds("\n**MAYA**\nGo home.\n", false), { "blank", "character", "dialogue", "blank" }, "bolded character cue")
+
+eq(parser.strip_markup("**INT. HOUSE**"), "INT. HOUSE", "bold markers come off")
+eq(parser.strip_markup("*a* and **b** and ***c***"), "a and b and c", "every emphasis form comes off")
+eq(parser.strip_markup("_THE END_"), "THE END", "a wrapped underline comes off")
+eq(parser.strip_markup("call some_var_name here"), "call some_var_name here", "snake_case is left alone")
+eq(parser.plain("  **INT. HOUSE - DAY**  "), "INT. HOUSE - DAY", "plain() trims and unwraps")
+eq(parser.plain("**INT. HOUSE"), "INT. HOUSE", "a half-typed marker still classifies")
+
 --------------------------------------------------------------------------- geometry
 section("geometry")
 
@@ -79,7 +99,16 @@ eq(render.indent_for("transition", "CUT TO:", 60), 53, "transition is right-alig
 ok(render.indent_for("transition", "CUT TO:", 60) + #"CUT TO:" == 60, "transition ends at the right margin")
 -- The `>` and `<` are concealed, so it is the visible text that gets centered.
 eq(render.indent_for("centered", "> THE END <", 60), 26, "centered text is centered")
-eq(render.indent_for("transition", "> SMASH CUT:", 60), 60 - #"SMASH CUT:", "forced transition ignores its marker")
+eq(render.indent_for("transition", "> SMASH CUT:", 60, 80), 60 - #"SMASH CUT:", "forced transition ignores its marker")
+eq(render.indent_for("transition", "> SMASH CUT:", 60), 60 - #"> SMASH CUT:", "a concealed marker still holds its place in the wrap")
+
+-- Concealed emphasis is not on screen, so it does not count towards placement.
+eq(render.visible_width("transition", "**CUT TO:**"), #"CUT TO:", "bold markers do not count towards width")
+-- Concealed characters still hold their place when Neovim breaks lines, so a
+-- bolded transition is placed by its raw width: as far right as it can go
+-- without wrapping onto a second row.
+eq(render.indent_for("transition", "**CUT TO:**", 60), 60 - #"**CUT TO:**", "a bolded transition stays on one row")
+eq(render.indent_for("transition", "**CUT TO:**", 60, 80), 60 - #"CUT TO:", "given room, it still lands on the margin")
 
 eq(render.marker_ranges("scene_heading", ".THE ROOF"), { { 0, 1 } }, "forced scene heading marker")
 eq(render.marker_ranges("character", "@McCLANE ^"), { { 0, 1 }, { 8, 10 } }, "forced cue and dual-dialogue caret")
@@ -243,6 +272,23 @@ for _, entry in ipairs(scenes) do
     ok(entry.lines > 0, "scene " .. entry.number .. " has a length", entry.lines)
   end
 end
+
+-- A script written with bolded slug lines lists its scenes like any other.
+local bold_buf = vim.api.nvim_create_buf(false, true)
+vim.api.nvim_buf_set_lines(bold_buf, 0, -1, false, {
+  "**INT. NEWSROOM - NIGHT**",
+  "",
+  "She types.",
+  "",
+  "**EXT. PARKING GARAGE - CONTINUOUS**",
+  "",
+  "They walk.",
+})
+local bold_scenes = outline.scan(bold_buf)
+eq(#bold_scenes, 2, "both bolded headings are found")
+eq(bold_scenes[1].text, "I. NEWSROOM - NIGHT", "the outline shows the slug, not the asterisks")
+eq(bold_scenes[2].number, 2, "bolded scenes are numbered in order")
+vim.api.nvim_buf_delete(bold_buf, { force = true })
 
 -- A scene the cursor is inside gets marked, and the mark follows the cursor.
 outline.mark_current(scenes[2].lnum)

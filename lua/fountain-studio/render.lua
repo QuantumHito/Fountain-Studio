@@ -71,10 +71,20 @@ function M.marker_ranges(kind, line)
   return ranges
 end
 
---- Display width of `line` once its markers are concealed.
+--- Display width of `line` once everything hidden from the reader is taken off:
+--- the structural markers this plugin conceals, and the emphasis delimiters the
+--- syntax file conceals whenever 'conceallevel' is on. Right-aligned elements
+--- are placed against this, so a bolded transition still lands on the margin.
 function M.visible_width(kind, line)
-  local width = vim.fn.strdisplaywidth(line)
-  if not config.get().conceal_markers then
+  local cfg = config.get()
+  local text = line
+  local conceallevel = cfg.winopts and cfg.winopts.conceallevel
+  if conceallevel == nil or conceallevel > 0 then
+    text = parser.strip_markup(text)
+  end
+
+  local width = vim.fn.strdisplaywidth(text)
+  if not cfg.conceal_markers then
     return width
   end
   for _, range in ipairs(M.marker_ranges(kind, line)) do
@@ -103,11 +113,24 @@ function M.geometry(kind, width)
 end
 
 --- Leading blank columns to draw for `line`, given its element type.
-function M.indent_for(kind, line, width)
-  if kind == "transition" then
-    return math.max(0, width - M.visible_width(kind, line))
-  elseif kind == "centered" then
-    return math.max(0, math.floor((width - M.visible_width(kind, line)) / 2))
+---
+--- Right-aligned and centered elements are placed against the width the reader
+--- sees, but Neovim breaks lines on the buffer text: a concealed character
+--- still holds its place in the wrap calculation. So the indent is also kept
+--- small enough that the *raw* line fits the window -- otherwise a bolded
+--- `**CUT TO:**` would be pushed flush right and then wrap onto a second row.
+--- `win_width` is where that edge is, and defaults to the page measure.
+function M.indent_for(kind, line, width, win_width)
+  win_width = win_width or width
+  if kind == "transition" or kind == "centered" then
+    local indent
+    if kind == "transition" then
+      indent = width - M.visible_width(kind, line)
+    else
+      indent = math.floor((width - M.visible_width(kind, line)) / 2)
+    end
+    local raw = vim.fn.strdisplaywidth(line)
+    return math.max(0, math.min(indent, win_width - raw))
   end
   local indent = M.geometry(kind, width)
   return indent
@@ -217,7 +240,7 @@ function M.render(win)
       local indent = 0
 
       if cfg.align then
-        indent = M.indent_for(kind, line, width)
+        indent = M.indent_for(kind, line, width, win_width)
         if indent > 0 then
           opts.virt_text = { { string.rep(" ", indent), "FountainStudioIndent" } }
           opts.virt_text_pos = "inline"

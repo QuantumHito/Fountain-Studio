@@ -112,6 +112,20 @@ Action paragraphs therefore break exactly where they break on the page, and so
 does dialogue: wrapped dialogue keeps its own 35-column measure instead of
 running to the page edge, so paragraph shape is what it will be in the PDF.
 
+Emphasis is markup, not part of the element: `**INT. NEWSROOM - NIGHT**`,
+`*CUT TO:*` and `**MAYA**` are read as a scene heading, a transition and a
+character cue, and the outline lists the slug rather than the asterisks. The
+markers are concealed on screen, and scene headings are bolded for you anyway,
+so the asterisks are optional — worth knowing that the Fountain spec defines a
+Scene Heading as a line *beginning* with `INT`/`EXT`, so other tools are likely
+to treat a bolded slug as action when they render your script.
+
+One consequence of concealing anything: Neovim breaks lines on the buffer text,
+so a hidden character still holds its place when a line wraps. A right-aligned
+element carrying hidden characters — a bolded `**CUT TO:**` — is therefore
+placed as far right as it can go *without wrapping*, which leaves it a few
+columns short of the margin rather than broken across two rows.
+
 If the terminal is too narrow for a 60-column page, the whole page — indents and
 measures included — is scaled down proportionally rather than clipped, and a
 short warning is issued once.

@@ -72,7 +72,9 @@ end
 
 local function heading_text(kind, line)
   local cfg = config.get()
-  local text = line:gsub("^%s+", ""):gsub("%s+$", "")
+  -- The slug as it reads on screen: a writer who bolds their headings should
+  -- see the heading in the outline, not the asterisks around it.
+  local text = parser.plain(line)
   if kind == "section" then
     return (text:gsub("^#+%s*", ""))
   end
