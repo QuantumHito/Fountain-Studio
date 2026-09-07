@@ -16,13 +16,35 @@ local function trim(line)
   return (line:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
+--- Remove the emphasis delimiters Fountain uses, which are concealed on screen
+--- anyway. `*` is handled in all three forms; `_` only when it wraps the whole
+--- line, so that snake_case in action text is left alone -- the same boundary
+--- rule the syntax file conceals by.
+function M.strip_markup(text)
+  text = text:gsub("%*%*%*(.-)%*%*%*", "%1")
+  text = text:gsub("%*%*(.-)%*%*", "%1")
+  text = text:gsub("%*(.-)%*", "%1")
+  local underlined = text:match("^%s*_(.+)_%s*$")
+  return underlined or text
+end
+
+--- An element as it reads on screen: trimmed, with emphasis taken off. A writer
+--- who bolds their slug lines -- **INT. HOUSE - DAY** -- is still writing scene
+--- headings, so elements are matched against this rather than the raw line.
+--- Unbalanced markers are stripped from the ends too, so a half-typed **INT.
+--- still classifies while it is being written.
+function M.plain(line)
+  local text = M.strip_markup(trim(line))
+  return (text:gsub("^[%*_]+", ""):gsub("[%*_]+$", ""))
+end
+
 -- Uppercase in the Fountain sense: contains a letter and no lowercase ones.
 local function is_upper(line)
   return line:match("%a") ~= nil and line == line:upper()
 end
 
 local function is_scene(line)
-  local up = trim(line):upper()
+  local up = M.plain(line):upper()
   for _, prefix in ipairs(SCENE_PREFIXES) do
     if up:sub(1, #prefix) == prefix then
       local next_char = up:sub(#prefix + 1, #prefix + 1)
@@ -35,8 +57,9 @@ local function is_scene(line)
 end
 
 local function is_transition(line, cfg)
-  local up = trim(line):upper()
-  if not is_upper(line) then
+  local text = M.plain(line)
+  local up = text:upper()
+  if not is_upper(text) then
     return false
   end
   if up:match("TO:$") then
@@ -50,11 +73,29 @@ local function is_transition(line, cfg)
   return false
 end
 
+-- A secondary slug line: uppercase, and one of the configured mini-slugs. The
+-- forced-element marker is allowed and ignored -- a writer who types
+-- `.MOMENTS LATER` is forcing Fountain not to read it as a character cue, which
+-- is the same thing this is for, and they still do not mean a new scene.
+local function is_mini_slug(line, cfg)
+  local text = M.plain(line):gsub("^%.", "")
+  if not is_upper(text) then
+    return false
+  end
+  local up = trim(text):upper():gsub("[%.:%-%s]+$", "")
+  for _, pattern in ipairs((cfg and cfg.mini_slugs) or {}) do
+    if up:match(pattern) then
+      return true
+    end
+  end
+  return false
+end
+
 -- A Character cue is an uppercase line preceded by a blank line and followed by
 -- a non-blank one. A trailing `^` marks dual dialogue and a trailing
 -- parenthetical extension -- (V.O.), (CONT'D) -- is part of the cue.
 local function is_character(line)
-  local text = trim(line):gsub("%^%s*$", "")
+  local text = M.plain(trim(line):gsub("%^%s*$", ""))
   local without_extension = text:gsub("%b()%s*$", "")
   if without_extension:match("^%s*$") then
     return false
@@ -108,6 +149,8 @@ function M.scan(lines, opts)
 
       if line:match("^===+%s*$") then
         kind = "page_break"
+      elseif prev_blank and is_mini_slug(line, cfg) then
+        kind = "mini_slug"
       elseif first == "." and line:sub(2, 2) ~= "." then
         kind = "scene_heading"
       elseif first == "!" then

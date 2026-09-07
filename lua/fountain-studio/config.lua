@@ -76,6 +76,33 @@ M.defaults = {
     "^THE END%.?$",
   },
 
+  -- Secondary slug lines -- "MOMENTS LATER", "BACK TO SCENE", "ANGLE ON" --
+  -- mark a jump in time or framing inside a scene, and are standard practice.
+  -- They are not new scenes: they keep the action under them as action rather
+  -- than reading as a character cue, and they do not appear in the outline.
+  -- Lua patterns, matched against the trimmed, uppercased line, with any
+  -- emphasis and forced-element marker taken off first. Empty this list to have
+  -- Fountain's plain rules back.
+  mini_slugs = {
+    "^LATER",
+    "^MOMENTS? LATER",
+    "^A MOMENT LATER",
+    "^SECONDS LATER",
+    "^CONTINUOUS",
+    "^SAME",
+    "^MEANWHILE",
+    "^ELSEWHERE",
+    "^BACK TO SCENE",
+    "^BACK TO PRESENT",
+    "^INTERCUT",
+    "^ANGLE ON",
+    "^CLOSE ON",
+    "^INSERT",
+    "^THAT NIGHT",
+    "^THAT EVENING",
+    "^THAT MORNING",
+  },
+
   -- Rendering only touches the visible region plus this many lines of slack.
   overscan = 40,
   -- How far to look back for a blank line when re-syncing the parser.
@@ -102,7 +129,7 @@ M.defaults = {
     enabled = true,
     width = 26,        -- capped to whatever the left margin actually is
     min_width = 14,    -- narrower than this and the margin is left blank
-    gap = 1,           -- blank columns between the outline and the page
+    gap = 4,           -- blank columns between the outline and the page
     header = true,     -- a SCENES header carrying the running total
     sections = true,   -- show `#` sections as dividers between scenes
     units = "eighths", -- "eighths" (1 3/8) or "decimal" (1.4)

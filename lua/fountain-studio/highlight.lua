@@ -4,6 +4,9 @@ local M = {}
 
 M.groups = {
   FountainSceneHeading = { bold = true, link = nil },
+  -- Subordinate to a scene heading, so it takes the heading's colour without
+  -- the weight.
+  FountainMiniSlug = {},
   FountainCharacter = { bold = true },
   FountainParenthetical = { italic = true },
   FountainTransition = { italic = true },
@@ -32,6 +35,7 @@ M.groups = {
 -- merged on top.
 M.links = {
   FountainSceneHeading = "Title",
+  FountainMiniSlug = "Title",
   FountainCharacter = "Identifier",
   FountainParenthetical = "Comment",
   FountainTransition = "Statement",

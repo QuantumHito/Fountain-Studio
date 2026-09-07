@@ -84,6 +84,11 @@ ACT ONE                           I brought bribes. And an apology,
                                   You brought lukewarm bribes.
 ```
 
+Click a scene to go there: the page jumps to it, centers it, and focus returns
+to the page so you can keep typing (`'mouse'` has to be set — LazyVim sets
+`mouse=a` by default; `<CR>` does the same from the keyboard). Clicking anywhere
+in the blank margins leaves the layout alone rather than dropping out of it.
+
 `#` sections appear as dividers between scenes, so acts show up in the list.
 Slugs are abbreviated (`INT.` → `I.`) to buy columns for the location, and the
 whole thing is dropped rather than squeezed when the margin is narrower than
@@ -111,6 +116,29 @@ standard 1.5" left and 1.0" right margins that leaves a 6.0" measure, so:
 Action paragraphs therefore break exactly where they break on the page, and so
 does dialogue: wrapped dialogue keeps its own 35-column measure instead of
 running to the page edge, so paragraph shape is what it will be in the PDF.
+
+**Secondary slug lines** — `MOMENTS LATER`, `BACK TO SCENE`, `ANGLE ON` — mark
+a jump in time or framing inside a scene. Fountain has no element for them, so
+plain rules read one as a *character cue* and turn the action under it into
+dialogue; forcing it with a leading `.` makes it a whole new scene instead.
+Neither is what the line means, so they are their own element: placed at the
+action margin, headed but not bold, and left out of the outline, because they do
+not start a scene. The list in `mini_slugs` is configurable — empty it for
+Fountain's plain rules.
+
+Emphasis is markup, not part of the element: `**INT. NEWSROOM - NIGHT**`,
+`*CUT TO:*` and `**MAYA**` are read as a scene heading, a transition and a
+character cue, and the outline lists the slug rather than the asterisks. The
+markers are concealed on screen, and scene headings are bolded for you anyway,
+so the asterisks are optional — worth knowing that the Fountain spec defines a
+Scene Heading as a line *beginning* with `INT`/`EXT`, so other tools are likely
+to treat a bolded slug as action when they render your script.
+
+One consequence of concealing anything: Neovim breaks lines on the buffer text,
+so a hidden character still holds its place when a line wraps. A right-aligned
+element carrying hidden characters — a bolded `**CUT TO:**` — is therefore
+placed as far right as it can go *without wrapping*, which leaves it a few
+columns short of the margin rather than broken across two rows.
 
 If the terminal is too narrow for a 60-column page, the whole page — indents and
 measures included — is scaled down proportionally rather than clipped, and a
@@ -148,6 +176,7 @@ Requires Neovim 0.10+ (inline virtual text). Verify a setup with
 |---|---|
 | `:FountainZen` | Toggle the centered page |
 | `:FountainOutline` | Toggle the scene outline in the left margin |
+| (click a scene) | Send the page to that scene — `<CR>` from the keyboard, `<Esc>` to go back |
 | `:FountainFormat` | Toggle the visual formatting in this buffer (raw view) |
 | `:FountainInspect` | Report how the line under the cursor is being classified and placed |
 
@@ -192,6 +221,15 @@ integration: `FountainStudioZenOpen` and `FountainStudioZenClose`.
     "^FADE OUT%.?$", "^FADE TO BLACK%.?$", "^CUT TO BLACK%.?$", "^THE END%.?$",
   },
 
+  -- Secondary slug lines. Empty this list for Fountain's plain rules.
+  mini_slugs = {
+    "^LATER", "^MOMENTS? LATER", "^A MOMENT LATER", "^SECONDS LATER",
+    "^CONTINUOUS", "^SAME", "^MEANWHILE", "^ELSEWHERE",
+    "^BACK TO SCENE", "^BACK TO PRESENT", "^INTERCUT",
+    "^ANGLE ON", "^CLOSE ON", "^INSERT",
+    "^THAT NIGHT", "^THAT EVENING", "^THAT MORNING",
+  },
+
   overscan = 40,   -- lines rendered beyond the viewport
   lookback = 200,  -- how far back to re-sync the parser
 
@@ -210,7 +248,7 @@ integration: `FountainStudioZenOpen` and `FountainStudioZenClose`.
     enabled = true,
     width = 26,        -- capped to whatever the left margin actually is
     min_width = 14,    -- narrower than this and the margin is left blank
-    gap = 1,           -- blank columns between the outline and the page
+    gap = 4,           -- blank columns between the outline and the page
     header = true,     -- a SCENES header carrying the running total
     sections = true,   -- show `#` sections as dividers between scenes
     units = "eighths", -- "eighths" (1 3/8) or "decimal" (1.4)
@@ -229,7 +267,7 @@ integration: `FountainStudioZenOpen` and `FountainStudioZenClose`.
 ```
 
 Every highlight group is defined with `default`, so a colorscheme or your own
-`:highlight` wins: `FountainSceneHeading`, `FountainCharacter`,
+`:highlight` wins: `FountainSceneHeading`, `FountainMiniSlug`, `FountainCharacter`,
 `FountainParenthetical`, `FountainTransition`, `FountainCentered`,
 `FountainSection`, `FountainSynopsis`, `FountainLyrics`, `FountainTitlePage`,
 `FountainPageBreak`, `FountainNote`, `FountainBoneyard`, `FountainBold`,
@@ -267,7 +305,7 @@ the window and its tail becomes the indent of the next screen row.
 nvim -l tests/run.lua   # from this directory; exits non-zero on failure
 ```
 
-86 checks covering element classification, geometry, wrapping, the layout math,
+119 checks covering element classification, geometry, wrapping, the layout math,
 the outline's scene detection and page arithmetic, and an end-to-end pass over
 `examples/sample.fountain` — including a check that writing the buffer leaves
 the file byte-identical, and that a refused `:q` keeps unsaved work on screen.
@@ -275,7 +313,7 @@ the file byte-identical, and that a refused `:q` keeps unsaved work on screen.
 ## What's next
 
 - **Right margin.** Still blank and reserved.
-- Jumping to a scene from the outline, and reordering scenes from it.
+- Reordering scenes from the outline.
 - Page-boundary markers down the side of the page (the 55-line rule).
 - Dual dialogue side by side, rather than one cue after the other.
 - Moving the rendering onto a decoration provider, so it follows the viewport
