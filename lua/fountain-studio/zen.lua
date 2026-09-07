@@ -16,6 +16,7 @@ local state = {
   backdrop_win = nil,
   backdrop_buf = nil,
   opening = false,
+  closing = false,
   quitting = false,
   forced = false,
   augroup = nil,
@@ -139,7 +140,7 @@ local function setup_autocmds()
     group = state.augroup,
     callback = function(args)
       if state.win and tonumber(args.match) == state.win then
-        M.close({ from_winclosed = true })
+        M.close({ from_winclosed = true, defer = true })
       end
     end,
   })
@@ -181,7 +182,7 @@ local function setup_autocmds()
         state.buf = args.buf
         return
       end
-      M.close()
+      M.close({ defer = true })
     end,
   })
 
@@ -200,7 +201,7 @@ local function setup_autocmds()
       if vim.api.nvim_win_get_config(win).relative ~= "" then
         return
       end
-      M.close()
+      M.close({ defer = true })
     end,
   })
 end
@@ -210,6 +211,12 @@ function M.open(bufnr, origin)
   local cfg = config.get()
   if not cfg.zen.enabled or M.is_open() then
     return M.win()
+  end
+  if state.closing then
+    vim.schedule(function()
+      M.open(bufnr, origin)
+    end)
+    return
   end
 
   bufnr = (bufnr == nil or bufnr == 0) and vim.api.nvim_get_current_buf() or bufnr
@@ -258,46 +265,57 @@ function M.resize()
   end
 end
 
-function M.close(opts)
-  opts = opts or {}
+--- Read everything the rest of the close needs while the page window is still
+--- there, and drop the state so nothing else tries to close it in the meantime.
+local function capture()
+  local snapshot = {
+    win = state.win,
+    origin = state.origin,
+    quitting = state.quitting,
+    forced = state.forced,
+  }
+  state.win, state.quitting, state.forced = nil, false, false
+
   if state.augroup then
     pcall(vim.api.nvim_del_augroup_by_id, state.augroup)
     state.augroup = nil
   end
 
-  local win, origin = state.win, state.origin
-  state.win = nil
+  if snapshot.win and vim.api.nvim_win_is_valid(snapshot.win) then
+    snapshot.shown = vim.api.nvim_win_get_buf(snapshot.win)
+    snapshot.view = vim.api.nvim_win_call(snapshot.win, vim.fn.winsaveview)
+  end
 
-  local view, shown
-  if win and vim.api.nvim_win_is_valid(win) then
-    shown = vim.api.nvim_win_get_buf(win)
-    view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
-    if not opts.from_winclosed then
-      pcall(vim.api.nvim_win_close, win, false)
-    end
+  state.buf, state.origin, state.view = nil, nil, nil
+  return snapshot
+end
+
+local function finish_close(snapshot, opts)
+  if snapshot.win and vim.api.nvim_win_is_valid(snapshot.win) and not opts.from_winclosed then
+    pcall(vim.api.nvim_win_close, snapshot.win, false)
   end
 
   close_backdrop()
 
+  local origin = snapshot.origin
   if origin and vim.api.nvim_win_is_valid(origin) then
     -- If the user opened something else while in the page, keep it on screen.
+    local shown = snapshot.shown
     if shown and vim.api.nvim_buf_is_valid(shown) and vim.api.nvim_win_get_buf(origin) ~= shown then
       pcall(vim.api.nvim_win_set_buf, origin, shown)
     end
     pcall(vim.api.nvim_set_current_win, origin)
-    if view then
+    if snapshot.view then
       vim.api.nvim_win_call(origin, function()
-        vim.fn.winrestview(view)
+        vim.fn.winrestview(snapshot.view)
       end)
     end
   end
 
-  state.buf, state.origin, state.view = nil, nil, nil
   vim.api.nvim_exec_autocmds("User", { pattern = "FountainStudioZenClose", modeline = false })
 
-  if state.quitting then
-    local forced, buffer = state.forced, shown
-    state.quitting, state.forced = false, false
+  if snapshot.quitting then
+    local forced, buffer = snapshot.forced, snapshot.shown
     vim.schedule(function()
       local quit_ok, err = pcall(vim.cmd, forced and "quit!" or "quit")
       if not quit_ok then
@@ -310,6 +328,35 @@ function M.close(opts)
         vim.notify(message, vim.log.levels.ERROR)
       end
     end)
+  end
+end
+
+--- Leave the page layout.
+---
+--- `opts.defer` runs the window work on the next tick, which is what the
+--- autocmds use: WinClosed fires "just before [the window] is removed from the
+--- window layout", so closing the backdrop from inside it changes the layout
+--- underneath Neovim while it is already changing it. Commands and mappings
+--- close synchronously -- there is no layout change in progress to trip over.
+function M.close(opts)
+  opts = opts or {}
+  if state.closing then
+    return
+  end
+
+  local snapshot = capture()
+  if not snapshot.win and not state.backdrop_win then
+    return
+  end
+
+  if opts.defer then
+    state.closing = true
+    vim.schedule(function()
+      state.closing = false
+      finish_close(snapshot, opts)
+    end)
+  else
+    finish_close(snapshot, opts)
   end
 end
 
