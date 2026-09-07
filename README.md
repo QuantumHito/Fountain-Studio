@@ -90,8 +90,7 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim) / LazyVim:
 
 ```lua
 {
-  "fountain-studio.nvim",
-  dir = "~/code/fountain-studio.nvim", -- or a git url once you push it
+  "QuantumHito/Fountain-Studio",
   ft = "fountain",
   -- Neovim does not know the extension yet, and lazy-loading by filetype needs
   -- it to, so register it at startup.
@@ -100,6 +99,21 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim) / LazyVim:
   end,
   opts = {},
 }
+```
+
+The repository is private, so lazy needs git credentials that can read it. Over
+SSH that means an agent key and:
+
+```lua
+require("lazy").setup(specs, { git = { url_format = "git@github.com:%s.git" } })
+```
+
+Over HTTPS, a credential helper (`gh auth setup-git`, say) is enough.
+
+Working on the plugin itself? Point lazy at the checkout instead:
+
+```lua
+{ dir = "~/code/Fountain-Studio", ft = "fountain", init = ..., opts = {} }
 ```
 
 Requires Neovim 0.10+ (inline virtual text). Verify a setup with
