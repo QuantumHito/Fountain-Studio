@@ -29,6 +29,7 @@ vim.cmd("syntax on")
 local fountain = require("fountain-studio")
 fountain.setup({})
 
+local outline = require("fountain-studio.outline")
 local parser = require("fountain-studio.parser")
 local render = require("fountain-studio.render")
 local zen = require("fountain-studio.zen")
@@ -120,6 +121,16 @@ ok(layout.page.width <= 50 and layout.page.width >= 32, "narrow terminal shrinks
 eq(layout.degraded, true, "narrow terminal reports degraded")
 vim.o.columns = 120
 
+--------------------------------------------------------------------------- outline
+section("outline")
+
+-- Scene length the way a production board writes it: eighths of a page.
+eq(outline.format_length(55, 55), "1", "a full page")
+eq(outline.format_length(110, 55), "2", "two pages")
+eq(outline.format_length(27, 55), "4/8", "half a page")
+eq(outline.format_length(69, 55), "1 2/8", "a page and a bit")
+eq(outline.format_length(1, 55), "1/8", "anything at all is at least an eighth")
+
 --------------------------------------------------------------------------- integration
 section("integration")
 
@@ -200,6 +211,53 @@ vim.cmd("FountainFormat")
 eq(#vim.api.nvim_buf_get_extmarks(buf, render.ns, 0, -1, {}), 0, "FountainFormat off clears the marks")
 vim.cmd("FountainFormat")
 ok(#vim.api.nvim_buf_get_extmarks(buf, render.ns, 0, -1, {}) > 0, "FountainFormat on restores them")
+
+-- The outline follows the page into the left margin.
+ok(outline.is_open(), "the outline opens with the page")
+local outline_geometry = outline.layout()
+local page_geometry = zen.layout().page
+ok(
+  outline_geometry.col + outline_geometry.width <= page_geometry.col,
+  "the outline sits in the margin without touching the page",
+  vim.inspect(outline_geometry)
+)
+
+local scenes, script_lines = outline.scan(buf)
+local slugs = {}
+for _, entry in ipairs(scenes) do
+  slugs[#slugs + 1] = (entry.divider and "# " or "") .. entry.text
+end
+eq(slugs, {
+  "# ACT ONE",
+  "I. NEWSROOM - NIGHT",
+  "E. PARKING GARAGE - CONTINUOUS",
+  "THE ROOF - LATER",
+}, "scenes in script order, sections as dividers, slugs abbreviated")
+
+eq(scenes[2].number, 1, "the first scene is numbered 1")
+eq(scenes[4].number, 3, "dividers do not take a scene number")
+ok(scenes[2].lnum < scenes[3].lnum, "scene line numbers ascend")
+ok(script_lines > 0, "the script has a measured length", script_lines)
+for _, entry in ipairs(scenes) do
+  if not entry.divider then
+    ok(entry.lines > 0, "scene " .. entry.number .. " has a length", entry.lines)
+  end
+end
+
+-- A scene the cursor is inside gets marked, and the mark follows the cursor.
+outline.mark_current(scenes[2].lnum)
+local marked = vim.api.nvim_buf_get_extmarks(outline.buf(), outline.ns_current, 0, -1, {})
+outline.mark_current(scenes[3].lnum)
+local moved = vim.api.nvim_buf_get_extmarks(outline.buf(), outline.ns_current, 0, -1, {})
+ok(#marked == 1, "the scene under the cursor is marked", vim.inspect(marked))
+ok(#moved == 1 and moved[1][2] > marked[1][2], "the mark follows the cursor to the next scene",
+  vim.inspect({ marked[1], moved[1] }))
+
+-- Too narrow a margin means no outline rather than a squeezed one.
+local columns = vim.o.columns
+vim.o.columns = 70
+eq(outline.layout(), nil, "a margin too narrow for the outline is left blank")
+vim.o.columns = columns
 
 -- Formatting is purely visual: the bytes on disk never change.
 local original = table.concat(vim.fn.readfile(root .. "/examples/sample.fountain"), "\n")

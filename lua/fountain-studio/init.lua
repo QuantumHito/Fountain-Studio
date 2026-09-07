@@ -2,6 +2,7 @@
 local config = require("fountain-studio.config")
 local highlight = require("fountain-studio.highlight")
 local parser = require("fountain-studio.parser")
+local outline = require("fountain-studio.outline")
 local render = require("fountain-studio.render")
 local zen = require("fountain-studio.zen")
 
@@ -10,6 +11,7 @@ local M = {}
 M.config = config
 M.render = render
 M.zen = zen
+M.outline = outline
 M.parser = parser
 
 local did_setup = false
@@ -106,6 +108,10 @@ local function create_commands()
     zen.toggle()
   end, { desc = "Toggle the centered screenplay page" })
 
+  vim.api.nvim_create_user_command("FountainOutline", function()
+    outline.toggle(vim.api.nvim_get_current_buf())
+  end, { desc = "Toggle the scene outline in the left margin" })
+
   vim.api.nvim_create_user_command("FountainFormat", function()
     local bufnr = vim.api.nvim_get_current_buf()
     vim.b[bufnr].fountain_studio_format = not render.enabled(bufnr)
@@ -143,6 +149,7 @@ function M.setup(opts)
   config.setup(opts)
   M.register_filetype()
   highlight.setup()
+  outline.setup()
 
   local group = vim.api.nvim_create_augroup("FountainStudio", { clear = true })
   vim.api.nvim_create_autocmd("ColorScheme", {

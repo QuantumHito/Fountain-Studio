@@ -97,6 +97,19 @@ M.defaults = {
     winhighlight = "NormalFloat:Normal,FloatBorder:Normal,EndOfBuffer:Normal",
   },
 
+  -- The scene outline drawn in the left margin.
+  outline = {
+    enabled = true,
+    width = 26,        -- capped to whatever the left margin actually is
+    min_width = 14,    -- narrower than this and the margin is left blank
+    gap = 1,           -- blank columns between the outline and the page
+    header = true,     -- a SCENES header carrying the running total
+    sections = true,   -- show `#` sections as dividers between scenes
+    units = "eighths", -- "eighths" (1 3/8) or "decimal" (1.4)
+    abbreviate = true, -- INT. -> I., EXT. -> E., to buy columns for the slug
+    page_lines = 55,   -- lines of text on a printed page
+  },
+
   -- Window-local options applied to the window showing the script.
   winopts = {
     wrap = true,
