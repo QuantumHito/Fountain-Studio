@@ -5,8 +5,9 @@
 -- estimate off the rendered line count, not a real pagination pass -- close
 -- enough to see at a glance that a scene is running long.
 local config = require("fountain-studio.config")
+local layout = require("fountain-studio.layout")
 local parser = require("fountain-studio.parser")
-local render = require("fountain-studio.render")
+local script = require("fountain-studio.script")
 local zen = require("fountain-studio.zen")
 
 local M = {}
@@ -43,19 +44,10 @@ end
 
 --------------------------------------------------------------------- measuring
 
---- How many lines of a printed page `line` occupies, wrapped at its own measure.
-local function page_lines_for(kind, line, width)
-  if kind == "blank" then
-    return 1
-  end
-  local _, measure = render.geometry(kind, width)
-  local visible = render.visible_width(kind, line)
-  return math.max(1, math.ceil(visible / math.max(1, measure)))
-end
-
 --- Scene length the way a production board writes it: whole pages plus eighths.
 function M.format_length(lines, page_lines)
   local cfg = config.get()
+  page_lines = page_lines or cfg.page_lines
   if cfg.outline.units == "decimal" then
     return ("%.1f"):format(lines / page_lines)
   end
@@ -91,41 +83,17 @@ local function heading_text(kind, line)
   return text
 end
 
---- Walk the whole script once, collecting scenes and their lengths.
+--- The scenes of `bufnr`, with the slug rendered the way the outline shows it.
+--- @return table[] entries, integer total page lines
 function M.scan(bufnr)
-  local cfg = config.get()
-  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-  local types = parser.scan(lines, { at_bof = true, cfg = cfg })
-
-  local entries, current, total, number = {}, nil, 0, 0
-
-  for i, line in ipairs(lines) do
-    local kind = types[i]
-    local height = page_lines_for(kind, line, cfg.width)
-
-    if kind == "scene_heading" then
-      number = number + 1
-      current = {
-        lnum = i,
-        number = number,
-        text = heading_text(kind, line),
-        lines = 0,
-        start = total,
-      }
-      entries[#entries + 1] = current
-    elseif kind == "section" and cfg.outline.sections then
-      -- A divider, not a scene: no number, no length, and it does not take the
-      -- following lines away from the scene they belong to.
-      entries[#entries + 1] = { lnum = i, divider = true, text = heading_text(kind, line) }
-    end
-
-    if current then
-      current.lines = current.lines + height
-    end
-    total = total + height
+  local analysis = script.analyse(bufnr)
+  local entries = {}
+  for index, entry in ipairs(analysis.scenes) do
+    entries[index] = vim.tbl_extend("force", entry, {
+      text = heading_text(entry.divider and "section" or "scene_heading", entry.text),
+    })
   end
-
-  return entries, total
+  return entries, analysis.total
 end
 
 --------------------------------------------------------------------- rendering
@@ -142,18 +110,22 @@ end
 
 --- The pinned header: the script's running length, in the winbar so that it
 --- stays put while the list of scenes scrolls under it.
-function M.header(total)
+function M.header(total, page)
   local cfg = config.get()
   if not cfg.outline.header then
     return ""
   end
-  return "%#FountainOutlineHeader#SCENES%=" .. M.format_length(total, cfg.outline.page_lines) .. " "
+  local right = M.format_length(total, cfg.page_lines)
+  if page then
+    right = "p" .. page .. " · " .. right
+  end
+  return "%#FountainOutlineHeader#SCENES%=" .. right .. " "
 end
 
 --- Build the display: one line per entry, plus the highlight ranges for it.
 function M.build(entries, total, width)
   local cfg = config.get()
-  local page_lines = cfg.outline.page_lines
+  local page_lines = cfg.page_lines
   local display, highlights, rows = {}, {}, {}
 
   local function add(text, ranges, entry_index)
@@ -207,29 +179,7 @@ end
 --------------------------------------------------------------------- the window
 
 function M.layout()
-  local cfg = config.get()
-  if not cfg.outline.enabled then
-    return nil
-  end
-
-  local page = zen.layout().page
-  local available = page.col - cfg.outline.gap
-  if available < cfg.outline.min_width then
-    return nil -- no margin to speak of; the page comes first
-  end
-
-  local width = math.min(cfg.outline.width, available)
-  return {
-    relative = "editor",
-    width = width,
-    height = page.height,
-    row = page.row,
-    col = math.max(0, page.col - cfg.outline.gap - width),
-    style = "minimal",
-    focusable = true, -- so a click lands here instead of falling through
-    border = "none",
-    zindex = 45, -- above the backdrop, below the page
-  }
+  return layout.margins().outline
 end
 
 --- The entry shown on display row `row`, if any.
@@ -303,6 +253,21 @@ local function ensure_buffer()
   return state.buf
 end
 
+--- Refresh the header, which reports the page the cursor is on alongside the
+--- running length of the script.
+function M.set_header(lnum)
+  if not M.is_open() or not state.source or not vim.api.nvim_buf_is_valid(state.source) then
+    return
+  end
+  local page = script.page_of(script.analyse(state.source, { stale_ok = true }), lnum or 1)
+  pcall(
+    vim.api.nvim_set_option_value,
+    "winbar",
+    M.header(M.total or 0, page),
+    { win = state.win, scope = "local" }
+  )
+end
+
 --- Mark the scene the cursor is currently sitting in.
 function M.mark_current(lnum)
   if not M.is_open() then
@@ -345,7 +310,8 @@ function M.refresh()
   local width = vim.api.nvim_win_get_width(state.win)
   local entries, total = M.scan(state.source)
   local display, highlights, rows = M.build(entries, total, width)
-  pcall(vim.api.nvim_set_option_value, "winbar", M.header(total), { win = state.win, scope = "local" })
+  M.total = total
+  M.set_header(vim.api.nvim_get_current_buf() == state.source and vim.api.nvim_win_get_cursor(0)[1] or 1)
 
   state.entries, state.rows, state.current = entries, rows, nil
   state.scene_rows = {}
@@ -382,7 +348,7 @@ function M.refresh()
   M.mark_current(cursor)
 end
 
-local function schedule_refresh(delay)
+local function schedule_refresh(delay)  -- luacheck: ignore
   if state.timer then
     state.timer:stop()
     state.timer:close()
@@ -420,7 +386,9 @@ local function setup_autocmds()
     group = state.augroup,
     buffer = state.source,
     callback = function()
-      M.mark_current(vim.api.nvim_win_get_cursor(0)[1])
+      local lnum = vim.api.nvim_win_get_cursor(0)[1]
+      M.mark_current(lnum)
+      M.set_header(lnum)
     end,
   })
 

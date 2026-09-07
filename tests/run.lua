@@ -29,7 +29,10 @@ vim.cmd("syntax on")
 local fountain = require("fountain-studio")
 fountain.setup({})
 
+local inspector = require("fountain-studio.inspector")
 local outline = require("fountain-studio.outline")
+local ruler = require("fountain-studio.ruler")
+local script = require("fountain-studio.script")
 local parser = require("fountain-studio.parser")
 local render = require("fountain-studio.render")
 local zen = require("fountain-studio.zen")
@@ -177,6 +180,87 @@ eq(outline.format_length(27, 55), "4/8", "half a page")
 eq(outline.format_length(69, 55), "1 2/8", "a page and a bit")
 eq(outline.format_length(1, 55), "1/8", "anything at all is at least an eighth")
 
+--------------------------------------------------------------------------- script analysis
+section("script analysis")
+
+local study = vim.api.nvim_create_buf(false, true)
+vim.api.nvim_buf_set_lines(study, 0, -1, false, {
+  "INT. NEWSROOM - NIGHT",                        -- 1
+  "",
+  "= Maya decides to run it anyway.",             -- 3
+  "",
+  "She types. [[check the timeline]]",            -- 5
+  "",
+  "MAYA (V.O.)",                                  -- 7
+  "Whatever it is, the answer is no.",            -- 8
+  "",
+  "DANNY",                                        -- 10
+  "I brought bribes.",                            -- 11
+  "",
+  "[[a note that runs",                           -- 13
+  "across two lines]]",
+  "",
+  "EXT. GARAGE - DAY",                            -- 16
+  "",
+  "MAYA",                                         -- 18
+  "Probably.",                                    -- 19
+})
+local study_analysis = script.analyse(study)
+
+eq(#study_analysis.scenes, 2, "both scenes are found")
+eq(study_analysis.scenes[1].synopsis, { "Maya decides to run it anyway." }, "the synopsis belongs to its scene")
+eq(#study_analysis.scenes[1].notes, 2, "both notes fall in the first scene")
+eq(study_analysis.notes[1].text, "check the timeline", "a note's text is extracted")
+eq(study_analysis.notes[1].lnum, 5, "a note knows its line")
+eq(study_analysis.notes[1].col, 12, "a note knows its column, so it can sit beside itself")
+eq(study_analysis.notes[2].text, "a note that runs across two lines", "a note can span lines")
+eq(study_analysis.notes[2].lnum, 13, "a spanning note is anchored where it opens")
+
+eq(script.character_name("MAYA (V.O.)"), "MAYA", "an extension is not part of the name")
+eq(script.character_name("@McCLANE ^"), "McCLANE", "nor is a cue marker or a dual-dialogue caret")
+eq(script.character_name("**DANNY**"), "DANNY", "nor is emphasis")
+eq(study_analysis.characters["MAYA"].speeches, 2, "speeches are counted per character")
+eq(study_analysis.characters["MAYA"].last_lnum, 18, "and where they last spoke")
+eq(study_analysis.scenes[1].cast["DANNY"], 1, "the scene cast counts dialogue lines")
+ok(study_analysis.scenes[2].cast["DANNY"] == nil, "a character absent from a scene is not in its cast")
+
+eq(script.page_of(study_analysis, 1), 1, "the script opens on page 1")
+eq(select(1, script.scene_at(study_analysis, 11)).lnum, 1, "a line belongs to the scene above it")
+eq(select(1, script.scene_at(study_analysis, 19)).lnum, 16, "and to the next one after that")
+
+-- The walk is shared, so it is only redone when the buffer changes.
+ok(script.analyse(study) == study_analysis, "an unchanged buffer reuses its analysis")
+vim.api.nvim_buf_set_lines(study, 0, 0, false, { "Title: Study", "" })
+ok(script.analyse(study) ~= study_analysis, "an edit invalidates it")
+vim.api.nvim_buf_delete(study, { force = true })
+
+--------------------------------------------------------------------------- margins
+section("ruler and inspector")
+
+eq(ruler.mark(1, 5), "─── 1", "a page mark is a rule and a number")
+eq(ruler.mark(12, 5), "── 12", "wider numbers take the rule's room")
+
+eq(inspector.wrap("one two three", 7), { "one two", "three" }, "text wraps on spaces")
+eq(inspector.wrap("supercalifragilistic", 8), { "supercal", "ifragili", "stic" }, "a long word is broken")
+eq(inspector.wrap("", 10), {}, "nothing wraps to nothing")
+
+-- Panels are dropped, not squeezed, as the terminal narrows.
+local columns = vim.o.columns
+local function panels(width)
+  vim.o.columns = width
+  local margins = require("fountain-studio.layout").margins()
+  return {
+    ruler = margins.ruler ~= nil,
+    outline = margins.outline ~= nil,
+    inspector = margins.inspector ~= nil,
+  }
+end
+eq(panels(132), { ruler = true, outline = true, inspector = true }, "a wide terminal carries all three")
+eq(panels(100).ruler, false, "the ruler gives up its columns before the outline does")
+eq(panels(100).outline, true, "the outline survives at 100 columns")
+eq(panels(80), { ruler = false, outline = false, inspector = false }, "an 80-column terminal is all page")
+vim.o.columns = columns
+
 --------------------------------------------------------------------------- integration
 section("integration")
 
@@ -307,6 +391,22 @@ eq(bold_scenes[1].text, "I. NEWSROOM - NIGHT", "the outline shows the slug, not 
 eq(bold_scenes[2].number, 2, "bolded scenes are numbered in order")
 vim.api.nvim_buf_delete(bold_buf, { force = true })
 
+-- The margins come up with the page.
+ok(ruler.is_open(), "the ruler opens with the page")
+ok(inspector.is_open(), "the inspector opens with the page")
+eq(inspector.mode(), "scene", "the inspector starts on the scene panel")
+
+-- The scene panel reports the scene the cursor is in.
+local panel = inspector.scene_panel(script.analyse(buf), lnum_of("MAYA"), 28)
+local panel_text = table.concat(panel, "\n")
+ok(panel_text:find("NEWSROOM", 1, true) ~= nil, "the panel names the scene", panel_text)
+ok(panel_text:find("IN THIS SCENE", 1, true) ~= nil, "and who is in it")
+ok(panel_text:find("MAYA", 1, true) ~= nil, "and lists them by name")
+
+inspector.set_mode("notes")
+eq(inspector.mode(), "notes", "the inspector switches to notes")
+inspector.set_mode("scene")
+
 -- A mini-slug belongs to the scene it sits in, so it adds no outline entry.
 local mini_buf = vim.api.nvim_create_buf(false, true)
 vim.api.nvim_buf_set_lines(mini_buf, 0, -1, false, {
@@ -319,10 +419,21 @@ eq(#mini_scenes, 1, "mini-slugs do not split the scene")
 eq(mini_scenes[1].text, "I. KITCHEN - DAY", "the scene is the one real slug")
 vim.api.nvim_buf_delete(mini_buf, { force = true })
 
--- The margin keeps its distance from the page.
-local gap = page_geometry.col - (outline_geometry.col + outline_geometry.width)
-eq(gap, config.get().outline.gap, "the configured gap sits between the outline and the page")
-ok(gap >= 2, "the outline does not hug the page", gap)
+-- The margin panels keep their distance and never overlap. The outline's gap is
+-- measured to whatever is next inwards -- the ruler, when it is showing.
+local margins = require("fountain-studio.layout").margins()
+local inward = margins.ruler and margins.ruler.col or margins.page.col
+eq(inward - (outline_geometry.col + outline_geometry.width), config.get().outline.gap,
+  "the configured gap sits between the outline and what is inside it")
+ok(outline_geometry.col + outline_geometry.width < margins.page.col, "the outline does not touch the page")
+if margins.ruler then
+  eq(margins.page.col - (margins.ruler.col + margins.ruler.width), config.get().ruler.gap,
+    "the ruler sits just outside the page")
+end
+if margins.inspector then
+  eq(margins.inspector.col - (margins.page.col + margins.page.width), config.get().inspector.gap,
+    "the inspector sits just outside the page on the other side")
+end
 
 -- Clicking a scene sends the page there and hands focus back.
 local jump_target = outline.entry_at_row(3)
