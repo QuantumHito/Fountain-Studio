@@ -2,7 +2,9 @@
 local config = require("fountain-studio.config")
 local highlight = require("fountain-studio.highlight")
 local parser = require("fountain-studio.parser")
+local inspector = require("fountain-studio.inspector")
 local outline = require("fountain-studio.outline")
+local ruler = require("fountain-studio.ruler")
 local render = require("fountain-studio.render")
 local zen = require("fountain-studio.zen")
 
@@ -12,6 +14,8 @@ M.config = config
 M.render = render
 M.zen = zen
 M.outline = outline
+M.ruler = ruler
+M.inspector = inspector
 M.parser = parser
 
 local did_setup = false
@@ -112,6 +116,33 @@ local function create_commands()
     outline.toggle(vim.api.nvim_get_current_buf())
   end, { desc = "Toggle the scene outline in the left margin" })
 
+  vim.api.nvim_create_user_command("FountainRuler", function()
+    ruler.toggle(vim.api.nvim_get_current_buf())
+  end, { desc = "Toggle the page ruler in the left margin" })
+
+  vim.api.nvim_create_user_command("FountainInspector", function(args)
+    local mode = vim.trim(args.args or "")
+    if mode == "" then
+      inspector.toggle(vim.api.nvim_get_current_buf())
+    else
+      inspector.set_mode(mode)
+    end
+  end, {
+    nargs = "?",
+    complete = function()
+      return { "scene", "notes" }
+    end,
+    desc = "Toggle the right margin, or switch it between `scene` and `notes`",
+  })
+
+  vim.api.nvim_create_user_command("FountainNotes", function()
+    if inspector.is_open() and inspector.mode() == "notes" then
+      inspector.set_mode("scene")
+    else
+      inspector.set_mode("notes")
+    end
+  end, { desc = "Swap the right margin between the scene inspector and notes" })
+
   vim.api.nvim_create_user_command("FountainFormat", function()
     local bufnr = vim.api.nvim_get_current_buf()
     vim.b[bufnr].fountain_studio_format = not render.enabled(bufnr)
@@ -150,6 +181,8 @@ function M.setup(opts)
   M.register_filetype()
   highlight.setup()
   outline.setup()
+  ruler.setup()
+  inspector.setup()
 
   local group = vim.api.nvim_create_augroup("FountainStudio", { clear = true })
   vim.api.nvim_create_autocmd("ColorScheme", {

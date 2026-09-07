@@ -10,8 +10,9 @@ and markers are hidden with conceal, so the bytes on disk stay a plain,
 unindented Fountain file. Turn the plugin off and the text is exactly as you
 typed it.
 
-**Status: stage two.** Layout, element alignment, highlighting and the
-left-margin scene outline are done — see [What's next](#whats-next).
+**Status: stage three.** The page, the left margin (scene outline and page
+ruler) and the right margin (scene inspector, or notes) are all in — see
+[What's next](#whats-next).
 
 ## What it looks like
 
@@ -100,6 +101,65 @@ Re-measuring walks the whole script, so it waits for a pause in typing: about
 30 ms on a 240-page script, and it never runs mid-keystroke. Following the
 cursor is separate and immediate.
 
+## The right margin
+
+Two modes, because writing and reading a draft back want different things.
+
+**`scene`** — the default: what you are writing in.
+
+```
+SCENE                     1/2
+INT. NEWSROOM - NIGHT
+6/8 · page 1
+
+SYNOPSIS
+Maya learns the story is dead
+and decides to run it anyway.
+
+NOTES
+· check the timeline against
+  ch.2
+· does Danny know about the
+  second source yet?
+
+IN THIS SCENE
+DANNY                        5
+MAYA                         3
+
+LAST SPOKE
+DANNY                     here
+MAYA                      here
+EDITOR                   3 4/8
+```
+
+The slug, how long the scene runs and what page it opens on; its `=` synopsis
+and its `[[notes]]`; who speaks in it and how many lines each has; and, for
+everyone who has spoken so far, how much page has gone by since they last did —
+so a character who has quietly dropped out of the script is visible.
+
+**`notes`** — for going through a draft: nothing but notes, each one beside the
+row its `[[` actually falls on, wrapped paragraph or not.
+
+```
+MOMENTS LATER
+
+The coffee is gone. The story is not. [[does Danny know    ▏ does Danny know about the
+about the second source yet?]]                               second source yet?
+```
+
+Switch with `:FountainInspector notes` / `:FountainInspector scene`, or
+`:FountainNotes` to flip between them.
+
+## The page ruler
+
+A thin column between the outline and the page marks where each printed page
+begins, and the outline's header carries the page you are on:
+
+```
+SCENES     p5 · 241 2/8
+  1 I. LOCATION 0 …  5/8    ─── 5   INT. LOCATION 44 - NIGHT
+```
+
 ## The measure
 
 A US Letter page set in 12pt Courier is 10 characters per inch. With the
@@ -176,6 +236,9 @@ Requires Neovim 0.10+ (inline virtual text). Verify a setup with
 |---|---|
 | `:FountainZen` | Toggle the centered page |
 | `:FountainOutline` | Toggle the scene outline in the left margin |
+| `:FountainRuler` | Toggle the page ruler |
+| `:FountainInspector [scene\|notes]` | Toggle the right margin, or switch its mode |
+| `:FountainNotes` | Flip the right margin between the scene inspector and notes |
 | (click a scene) | Send the page to that scene — `<CR>` from the keyboard, `<Esc>` to go back |
 | `:FountainFormat` | Toggle the visual formatting in this buffer (raw view) |
 | `:FountainInspect` | Report how the line under the cursor is being classified and placed |
@@ -244,6 +307,26 @@ integration: `FountainStudioZenOpen` and `FountainStudioZenClose`.
     winhighlight = "NormalFloat:Normal,FloatBorder:Normal,EndOfBuffer:Normal",
   },
 
+  page_lines = 55,     -- lines of text on a printed page
+  refresh_delay = 200, -- how long the margins wait for a pause in typing
+
+  ruler = {
+    enabled = true,
+    width = 5,
+    gap = 1,           -- blank columns between the ruler and the page
+  },
+
+  inspector = {
+    enabled = true,
+    mode = "scene",    -- "scene" or "notes"
+    width = 30,
+    min_width = 16,
+    gap = 4,           -- blank columns between the page and the inspector
+    cast = true,       -- who speaks in this scene, and how much
+    tracker = true,    -- when each character last spoke
+    tracked = 6,       -- how many characters the tracker lists
+  },
+
   outline = {
     enabled = true,
     width = 26,        -- capped to whatever the left margin actually is
@@ -275,7 +358,10 @@ Every highlight group is defined with `default`, so a colorscheme or your own
 `FountainStudioBackdrop` for the blank margins. The outline has
 `FountainOutlineHeader`, `FountainOutlineNumber`, `FountainOutlineHeading`,
 `FountainOutlineLength`, `FountainOutlineSection`, `FountainOutlineCurrent` and
-`FountainOutlineEmpty`.
+`FountainOutlineEmpty`; the ruler has `FountainRuler` and `FountainRulerCurrent`;
+the inspector has `FountainInspectorHeader`, `FountainInspectorSlug`,
+`FountainInspectorText`, `FountainInspectorNote`, `FountainInspectorCharacter`
+and `FountainInspectorDim`.
 
 `FountainStudioIndent`, which draws the virtual indentation, is deliberately
 attribute-less: it inherits the background of whatever window it is drawn in, so
@@ -289,11 +375,28 @@ the indent can never show up as a block of a different colour.
 | Indentation, measures, highlighting | `lua/fountain-studio/render.lua` |
 | Centered page and backdrop | `lua/fountain-studio/zen.lua` |
 | Scene outline and page counts | `lua/fountain-studio/outline.lua` |
+| One shared walk of the script | `lua/fountain-studio/script.lua` |
+| Where each panel goes | `lua/fountain-studio/layout.lua` |
+| Page ruler | `lua/fountain-studio/ruler.lua` |
+| Right margin, both modes | `lua/fountain-studio/inspector.lua` |
 | Emphasis, notes, boneyard | `syntax/fountain.vim` |
 
 The parser is line-at-a-time and re-syncs at blank lines, so only the visible
 region plus a margin is ever re-parsed — a keystroke re-renders about a screen's
 worth of lines, not the script.
+
+The outline, the ruler and the inspector all want the same facts about the
+script — where the pages fall, where the scenes are, who speaks, where the notes
+are — so it is walked once and cached against the buffer's `changedtick`. That
+walk costs about 28 ms on a 240-page script, far too much to pay per keystroke,
+so the margins read the analysis they already have while you type and re-measure
+once you stop (`refresh_delay`). A keystroke costs about 1 ms with the page and
+both margins up. Nothing that has to be exact — the page itself above all —
+reads from that cache.
+
+Panels are dropped rather than squeezed as the terminal narrows: the ruler gives
+up its columns before the outline does, and below about 80 columns it is all
+page.
 
 Wrapped dialogue works by a small trick: Neovim wraps inline virtual text like
 ordinary text, so padding inserted at a break point spills past the right edge of
@@ -305,15 +408,17 @@ the window and its tail becomes the indent of the next screen row.
 nvim -l tests/run.lua   # from this directory; exits non-zero on failure
 ```
 
-119 checks covering element classification, geometry, wrapping, the layout math,
-the outline's scene detection and page arithmetic, and an end-to-end pass over
+157 checks covering element classification, geometry, wrapping, the layout math,
+the outline's scene detection and page arithmetic, the shared analysis (notes,
+synopses, speeches, page positions), the panel geometry, and an end-to-end pass over
 `examples/sample.fountain` — including a check that writing the buffer leaves
 the file byte-identical, and that a refused `:q` keeps unsaved work on screen.
 
 ## What's next
 
-- **Right margin.** Still blank and reserved.
 - Reordering scenes from the outline.
+- Hiding `[[notes]]` inline while the notes column is up, so the page reads
+  clean during a notes pass.
 - Page-boundary markers down the side of the page (the 55-line rule).
 - Dual dialogue side by side, rather than one cue after the other.
 - Moving the rendering onto a decoration provider, so it follows the viewport

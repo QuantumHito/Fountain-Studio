@@ -13,6 +13,13 @@ function M.is_blank(line)
 end
 
 local function trim(line)
+  if line == "" then
+    return line
+  end
+  local first, last = line:byte(1), line:byte(-1)
+  if first ~= 32 and first ~= 9 and last ~= 32 and last ~= 9 then
+    return line
+  end
   return (line:gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
@@ -21,6 +28,9 @@ end
 --- line, so that snake_case in action text is left alone -- the same boundary
 --- rule the syntax file conceals by.
 function M.strip_markup(text)
+  if not text:find("[%*_]") then
+    return text -- nothing to take off, and this is the overwhelming majority
+  end
   text = text:gsub("%*%*%*(.-)%*%*%*", "%1")
   text = text:gsub("%*%*(.-)%*%*", "%1")
   text = text:gsub("%*(.-)%*", "%1")
@@ -35,6 +45,9 @@ end
 --- still classifies while it is being written.
 function M.plain(line)
   local text = M.strip_markup(trim(line))
+  if not text:find("^[%*_]") and not text:find("[%*_]$") then
+    return text
+  end
   return (text:gsub("^[%*_]+", ""):gsub("[%*_]+$", ""))
 end
 
@@ -43,8 +56,8 @@ local function is_upper(line)
   return line:match("%a") ~= nil and line == line:upper()
 end
 
-local function is_scene(line)
-  local up = M.plain(line):upper()
+local function is_scene(plain)
+  local up = plain:upper()
   for _, prefix in ipairs(SCENE_PREFIXES) do
     if up:sub(1, #prefix) == prefix then
       local next_char = up:sub(#prefix + 1, #prefix + 1)
@@ -56,8 +69,8 @@ local function is_scene(line)
   return false
 end
 
-local function is_transition(line, cfg)
-  local text = M.plain(line)
+local function is_transition(plain, cfg)
+  local text = plain
   local up = text:upper()
   if not is_upper(text) then
     return false
@@ -77,8 +90,8 @@ end
 -- forced-element marker is allowed and ignored -- a writer who types
 -- `.MOMENTS LATER` is forcing Fountain not to read it as a character cue, which
 -- is the same thing this is for, and they still do not mean a new scene.
-local function is_mini_slug(line, cfg)
-  local text = M.plain(line):gsub("^%.", "")
+local function is_mini_slug(plain, cfg)
+  local text = plain:gsub("^%.", "")
   if not is_upper(text) then
     return false
   end
@@ -94,8 +107,8 @@ end
 -- A Character cue is an uppercase line preceded by a blank line and followed by
 -- a non-blank one. A trailing `^` marks dual dialogue and a trailing
 -- parenthetical extension -- (V.O.), (CONT'D) -- is part of the cue.
-local function is_character(line)
-  local text = M.plain(trim(line):gsub("%^%s*$", ""))
+local function is_character(plain)
+  local text = plain:gsub("%s*%^%s*$", "")
   local without_extension = text:gsub("%b()%s*$", "")
   if without_extension:match("^%s*$") then
     return false
@@ -146,10 +159,13 @@ function M.scan(lines, opts)
       local first = line:sub(1, 1)
       local prev_blank = i == 1 or M.is_blank(lines[i - 1])
       local next_blank = M.is_blank(lines[i + 1])
+      -- Every element test below needs a blank line above, and they all read
+      -- the same stripped text, so it is worked out once or not at all.
+      local plain = prev_blank and M.plain(line) or ""
 
       if line:match("^===+%s*$") then
         kind = "page_break"
-      elseif prev_blank and is_mini_slug(line, cfg) then
+      elseif prev_blank and is_mini_slug(plain, cfg) then
         kind = "mini_slug"
       elseif first == "." and line:sub(2, 2) ~= "." then
         kind = "scene_heading"
@@ -165,11 +181,11 @@ function M.scan(lines, opts)
         kind = "synopsis"
       elseif first == "~" then
         kind = "lyrics"
-      elseif prev_blank and is_scene(line) then
+      elseif prev_blank and is_scene(plain) then
         kind = "scene_heading"
-      elseif prev_blank and next_blank and is_transition(line, cfg) then
+      elseif prev_blank and next_blank and is_transition(plain, cfg) then
         kind = "transition"
-      elseif prev_blank and not next_blank and is_character(line) then
+      elseif prev_blank and not next_blank and is_character(plain) then
         kind, in_dialogue = "character", true
       else
         kind = "action"

@@ -72,6 +72,18 @@ function M.marker_ranges(kind, line)
   return ranges
 end
 
+--- Display width, avoiding a call into Vimscript for the common case. Every
+--- printable ASCII character is one column wide and none of them is a tab, so
+--- for such a line the byte count is the display width. Measuring every line of
+--- a long script adds up: this is the difference between a noticeable hitch and
+--- none when the margins re-measure.
+local function display_width(text)
+  if text:find("[^\32-\126]") then
+    return vim.fn.strdisplaywidth(text)
+  end
+  return #text
+end
+
 --- Display width of `line` once everything hidden from the reader is taken off:
 --- the structural markers this plugin conceals, and the emphasis delimiters the
 --- syntax file conceals whenever 'conceallevel' is on. Right-aligned elements
@@ -80,16 +92,16 @@ function M.visible_width(kind, line)
   local cfg = config.get()
   local text = line
   local conceallevel = cfg.winopts and cfg.winopts.conceallevel
-  if conceallevel == nil or conceallevel > 0 then
+  if (conceallevel == nil or conceallevel > 0) and text:find("[%*_]") then
     text = parser.strip_markup(text)
   end
 
-  local width = vim.fn.strdisplaywidth(text)
+  local width = display_width(text)
   if not cfg.conceal_markers then
     return width
   end
   for _, range in ipairs(M.marker_ranges(kind, line)) do
-    width = width - vim.fn.strdisplaywidth(line:sub(range[1] + 1, range[2]))
+    width = width - display_width(line:sub(range[1] + 1, range[2]))
   end
   return math.max(0, width)
 end
@@ -130,7 +142,7 @@ function M.indent_for(kind, line, width, win_width)
     else
       indent = math.floor((width - M.visible_width(kind, line)) / 2)
     end
-    local raw = vim.fn.strdisplaywidth(line)
+    local raw = display_width(line)
     return math.max(0, math.min(indent, win_width - raw))
   end
   local indent = M.geometry(kind, width)

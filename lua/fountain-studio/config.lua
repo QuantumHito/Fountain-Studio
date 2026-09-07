@@ -8,6 +8,13 @@
 local M = {}
 
 M.defaults = {
+  -- How long the margins wait for a pause in typing before re-measuring the
+  -- script, in milliseconds.
+  refresh_delay = 200,
+
+  -- Lines of text on a printed page: what page counts are measured against.
+  page_lines = 55,
+
   -- Filetypes treated as Fountain scripts.
   filetypes = { "fountain" },
 
@@ -134,7 +141,30 @@ M.defaults = {
     sections = true,   -- show `#` sections as dividers between scenes
     units = "eighths", -- "eighths" (1 3/8) or "decimal" (1.4)
     abbreviate = true, -- INT. -> I., EXT. -> E., to buy columns for the slug
-    page_lines = 55,   -- lines of text on a printed page
+  },
+
+  -- The page ruler: a thin column between the outline and the page, marking
+  -- where each printed page begins.
+  ruler = {
+    enabled = true,
+    width = 5,
+    gap = 1,        -- blank columns between the ruler and the page
+  },
+
+  -- The right margin.
+  --   "scene" -- what you are writing in: the slug, its synopsis, its notes,
+  --             who speaks in it, and when everyone last spoke.
+  --   "notes" -- nothing but notes, each beside the line it belongs to, for
+  --             reading a draft back.
+  inspector = {
+    enabled = true,
+    mode = "scene",
+    width = 30,
+    min_width = 16,
+    gap = 4,        -- blank columns between the page and the inspector
+    cast = true,    -- who speaks in this scene, and how much
+    tracker = true, -- when each character last spoke
+    tracked = 6,    -- how many characters the tracker lists
   },
 
   -- Window-local options applied to the window showing the script.
