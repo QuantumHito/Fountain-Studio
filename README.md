@@ -223,3 +223,7 @@ unsaved work on screen.
 - **Right margin.** Left blank and reserved.
 - Page-boundary markers down the side of the page (the 55-line rule).
 - Dual dialogue side by side, rather than one cue after the other.
+
+## License
+
+[MIT](LICENSE).
