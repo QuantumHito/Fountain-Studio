@@ -72,7 +72,7 @@ function M.marker_ranges(kind, line)
 end
 
 --- Display width of `line` once its markers are concealed.
-local function visible_width(kind, line)
+function M.visible_width(kind, line)
   local width = vim.fn.strdisplaywidth(line)
   if not config.get().conceal_markers then
     return width
@@ -105,9 +105,9 @@ end
 --- Leading blank columns to draw for `line`, given its element type.
 function M.indent_for(kind, line, width)
   if kind == "transition" then
-    return math.max(0, width - visible_width(kind, line))
+    return math.max(0, width - M.visible_width(kind, line))
   elseif kind == "centered" then
-    return math.max(0, math.floor((width - visible_width(kind, line)) / 2))
+    return math.max(0, math.floor((width - M.visible_width(kind, line)) / 2))
   end
   local indent = M.geometry(kind, width)
   return indent

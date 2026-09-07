@@ -10,8 +10,8 @@ and markers are hidden with conceal, so the bytes on disk stay a plain,
 unindented Fountain file. Turn the plugin off and the text is exactly as you
 typed it.
 
-**Status: stage one.** Layout, element alignment and highlighting are done. The
-scene outline in the left margin is next — see [What's next](#whats-next).
+**Status: stage two.** Layout, element alignment, highlighting and the
+left-margin scene outline are done — see [What's next](#whats-next).
 
 ## What it looks like
 
@@ -62,6 +62,38 @@ What you see while editing it:
 |                EXT. PARKING GARAGE - CONTINUOUS                                            |
 |                                                                                            |
 ```
+
+## The scene outline
+
+The left margin lists the scenes in script order with how long each one runs,
+measured the way a production board measures it — in eighths of a page. The
+scene the cursor is in is highlighted, the list scrolls to follow it, and the
+header carries the running length of the whole script.
+
+```
+SCENES           1 3/8                        DANNY
+ACT ONE                           I brought bribes. And an apology,
+ 1 I. NEWSROOM - N… 6/8           and a theory about why the mayor's
+ 2 E. PARKING GARA… 3/8           office called the publisher at
+ 3 THE ROOF - LATER 1/8           eleven at night to talk about a
+                                  story that officially does not
+                                  exist yet.
+
+                                              MAYA
+                                        (taking one)
+                                  You brought lukewarm bribes.
+```
+
+`#` sections appear as dividers between scenes, so acts show up in the list.
+Slugs are abbreviated (`INT.` → `I.`) to buy columns for the location, and the
+whole thing is dropped rather than squeezed when the margin is narrower than
+`outline.min_width`. Lengths are an estimate from the rendered line count at 55
+lines to the page, not a true pagination pass — close enough to see at a glance
+that a scene is running long.
+
+Re-measuring walks the whole script, so it waits for a pause in typing: about
+30 ms on a 240-page script, and it never runs mid-keystroke. Following the
+cursor is separate and immediate.
 
 ## The measure
 
@@ -115,6 +147,7 @@ Requires Neovim 0.10+ (inline virtual text). Verify a setup with
 | Command | What it does |
 |---|---|
 | `:FountainZen` | Toggle the centered page |
+| `:FountainOutline` | Toggle the scene outline in the left margin |
 | `:FountainFormat` | Toggle the visual formatting in this buffer (raw view) |
 | `:FountainInspect` | Report how the line under the cursor is being classified and placed |
 
@@ -168,6 +201,21 @@ integration: `FountainStudioZenOpen` and `FountainStudioZenClose`.
     backdrop = true,  -- blank out everything behind it
     offset = 0,       -- nudge the page left or right
     pad_top = 0,
+    -- The page is an editing surface, so it takes the editor's own colours
+    -- rather than the float colours a theme reserves for popups.
+    winhighlight = "NormalFloat:Normal,FloatBorder:Normal,EndOfBuffer:Normal",
+  },
+
+  outline = {
+    enabled = true,
+    width = 26,        -- capped to whatever the left margin actually is
+    min_width = 14,    -- narrower than this and the margin is left blank
+    gap = 1,           -- blank columns between the outline and the page
+    header = true,     -- a SCENES header carrying the running total
+    sections = true,   -- show `#` sections as dividers between scenes
+    units = "eighths", -- "eighths" (1 3/8) or "decimal" (1.4)
+    abbreviate = true, -- INT. -> I., to buy columns for the slug
+    page_lines = 55,   -- lines of text on a printed page
   },
 
   winopts = { -- applied to the window showing the script
@@ -186,7 +234,14 @@ Every highlight group is defined with `default`, so a colorscheme or your own
 `FountainSection`, `FountainSynopsis`, `FountainLyrics`, `FountainTitlePage`,
 `FountainPageBreak`, `FountainNote`, `FountainBoneyard`, `FountainBold`,
 `FountainItalic`, `FountainBoldItalic`, `FountainUnderline`, and
-`FountainStudioBackdrop` for the blank margins.
+`FountainStudioBackdrop` for the blank margins. The outline has
+`FountainOutlineHeader`, `FountainOutlineNumber`, `FountainOutlineHeading`,
+`FountainOutlineLength`, `FountainOutlineSection`, `FountainOutlineCurrent` and
+`FountainOutlineEmpty`.
+
+`FountainStudioIndent`, which draws the virtual indentation, is deliberately
+attribute-less: it inherits the background of whatever window it is drawn in, so
+the indent can never show up as a block of a different colour.
 
 ## How it works
 
@@ -195,6 +250,7 @@ Every highlight group is defined with `default`, so a colorscheme or your own
 | Element classification | `lua/fountain-studio/parser.lua` |
 | Indentation, measures, highlighting | `lua/fountain-studio/render.lua` |
 | Centered page and backdrop | `lua/fountain-studio/zen.lua` |
+| Scene outline and page counts | `lua/fountain-studio/outline.lua` |
 | Emphasis, notes, boneyard | `syntax/fountain.vim` |
 
 The parser is line-at-a-time and re-syncs at blank lines, so only the visible
@@ -211,18 +267,19 @@ the window and its tail becomes the indent of the next screen row.
 nvim -l tests/run.lua   # from this directory; exits non-zero on failure
 ```
 
-66 checks covering element classification, geometry, wrapping, the layout math,
-and an end-to-end pass over `examples/sample.fountain` — including a check that
-writing the buffer leaves the file byte-identical, and that a refused `:q` keeps
-unsaved work on screen.
+86 checks covering element classification, geometry, wrapping, the layout math,
+the outline's scene detection and page arithmetic, and an end-to-end pass over
+`examples/sample.fountain` — including a check that writing the buffer leaves
+the file byte-identical, and that a refused `:q` keeps unsaved work on screen.
 
 ## What's next
 
-- **Left margin: the scene outline.** Scenes in script order with their page
-  count, in the blank column to the left of the page, kept in sync as you write.
-- **Right margin.** Left blank and reserved.
+- **Right margin.** Still blank and reserved.
+- Jumping to a scene from the outline, and reordering scenes from it.
 - Page-boundary markers down the side of the page (the 55-line rule).
 - Dual dialogue side by side, rather than one cue after the other.
+- Moving the rendering onto a decoration provider, so it follows the viewport
+  Neovim is actually drawing instead of reacting to scroll events.
 
 ## License
 

@@ -96,6 +96,9 @@ local function apply_winopts(win)
     pcall(vim.api.nvim_set_option_value, name, value, { win = win, scope = "local" })
   end
   pcall(vim.api.nvim_set_option_value, "fillchars", "eob: ", { win = win, scope = "local" })
+  if cfg.zen.winhighlight then
+    pcall(vim.api.nvim_set_option_value, "winhighlight", cfg.zen.winhighlight, { win = win, scope = "local" })
+  end
 end
 
 local function open_backdrop(geometry)
