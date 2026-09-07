@@ -101,15 +101,6 @@ With [lazy.nvim](https://github.com/folke/lazy.nvim) / LazyVim:
 }
 ```
 
-The repository is private, so lazy needs git credentials that can read it. Over
-SSH that means an agent key and:
-
-```lua
-require("lazy").setup(specs, { git = { url_format = "git@github.com:%s.git" } })
-```
-
-Over HTTPS, a credential helper (`gh auth setup-git`, say) is enough.
-
 Working on the plugin itself? Point lazy at the checkout instead:
 
 ```lua
