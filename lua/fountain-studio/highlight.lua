@@ -54,8 +54,11 @@ function M.setup()
 
   -- The blanked-out margins behind the page.
   vim.api.nvim_set_hl(0, "FountainStudioBackdrop", { link = "Normal", default = true })
-  -- The virtual indentation itself; kept unhighlighted on purpose.
-  vim.api.nvim_set_hl(0, "FountainStudioIndent", { link = "Normal", default = true })
+  -- The virtual indentation. Deliberately empty rather than linked to Normal:
+  -- an attribute-less group inherits the background of whatever window it is
+  -- drawn in, so the indent never shows as a block of a different colour when
+  -- Normal and NormalFloat differ -- as they do in Catppuccin and most themes.
+  vim.api.nvim_set_hl(0, "FountainStudioIndent", { default = true })
 end
 
 return M

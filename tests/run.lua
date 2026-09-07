@@ -172,6 +172,20 @@ eq(hl_of("INT. NEWSROOM - NIGHT"), "FountainSceneHeading", "scene heading is hig
 eq(hl_of("MAYA"), "FountainCharacter", "character is highlighted")
 eq(hl_of("CUT TO:"), "FountainTransition", "transition is highlighted")
 
+-- The virtual indentation must inherit the background of the window it is drawn
+-- in. Pinning it to Normal made it show as a block of a different colour on any
+-- theme where Normal and NormalFloat differ, Catppuccin among them.
+local indent_hl = vim.api.nvim_get_hl(0, { name = "FountainStudioIndent" })
+ok(
+  indent_hl.fg == nil and indent_hl.bg == nil and indent_hl.link == nil,
+  "the indent group carries no colour of its own",
+  vim.inspect(indent_hl)
+)
+ok(
+  (vim.api.nvim_get_option_value("winhighlight", { win = zen.win(), scope = "local" })):find("NormalFloat:Normal", 1, true) ~= nil,
+  "the page window takes the editor's colours, not the float colours"
+)
+
 -- Editing keeps the rendering in step.
 vim.api.nvim_win_set_cursor(zen.win(), { lnum_of("MAYA"), 0 })
 vim.cmd("normal! oI said no.")

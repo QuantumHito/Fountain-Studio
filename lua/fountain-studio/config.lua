@@ -91,6 +91,10 @@ M.defaults = {
     offset = 0,
     -- Blank rows above the page.
     pad_top = 0,
+    -- The page is an editing surface, so it takes the editor's own colours
+    -- rather than the float colours a theme reserves for popups -- which also
+    -- keeps it identical to the margins behind it.
+    winhighlight = "NormalFloat:Normal,FloatBorder:Normal,EndOfBuffer:Normal",
   },
 
   -- Window-local options applied to the window showing the script.
