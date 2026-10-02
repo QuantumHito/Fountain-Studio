@@ -95,7 +95,9 @@ Slugs are abbreviated (`INT.` → `I.`) to buy columns for the location, and the
 whole thing is dropped rather than squeezed when the margin is narrower than
 `outline.min_width`. Lengths are an estimate from the rendered line count at 55
 lines to the page, not a true pagination pass — close enough to see at a glance
-that a scene is running long.
+that a scene is running long. Measured against afterwriting's real output on a
+238-page script it comes in 1.3% low; on a short script the fraction is what to
+read, since a PDF rounds up to whole pages and adds a title page of its own.
 
 Re-measuring walks the whole script, so it waits for a pause in typing: about
 30 ms on a 240-page script, and it never runs mid-keystroke. Following the
@@ -230,6 +232,64 @@ Working on the plugin itself? Point lazy at the checkout instead:
 Requires Neovim 0.10+ (inline virtual text). Verify a setup with
 `:checkhealth fountain-studio`.
 
+### afterwriting, for PDF export
+
+PDF export shells out to [afterwriting](https://github.com/ifrost/afterwriting-labs),
+a Node CLI that typesets a Fountain file into a properly formatted screenplay
+PDF. It is optional — everything else works without it — and deliberately not
+vendored: afterwriting does the pagination, so the PDF is its judgement of where
+the pages fall, not this plugin's estimate.
+
+```bash
+npm install -g afterwriting   # needs Node; provides the `afterwriting` binary
+afterwriting --source script.fountain --pdf script.pdf --overwrite   # what the plugin runs
+```
+
+`:checkhealth fountain-studio` reports whether it was found and where. If it
+lives somewhere not on `PATH` — an `nvm` install, a project-local
+`node_modules/.bin`, or `npx` — point the plugin at it instead:
+
+```lua
+opts = {
+  export = {
+    command = "npx",              -- or an absolute path to the binary
+    args = { "--yes", "afterwriting" },  -- anything before --source
+  },
+}
+```
+
+Then `:FountainExport` writes `script.pdf` beside `script.fountain`;
+`:FountainExport!` opens it when it is done; `:FountainExport ~/drafts/` or
+`:FountainExport ~/drafts/v3.pdf` sends it elsewhere. The buffer is saved first,
+because afterwriting reads the file rather than the buffer.
+
+afterwriting's own options come through configuration rather than the command
+line, so a project keeps one setup:
+
+```lua
+opts = {
+  export = {
+    directory = "~/drafts",       -- all PDFs here, instead of beside the script
+    open = true,                  -- always open the result
+    config_file = "~/.afterwriting.json",  -- afterwriting --config
+    fonts = nil,                            -- afterwriting --fonts
+    settings = {                            -- afterwriting --setting, repeated
+      "print_title_page=false",
+      "scenes_numbering=left",
+    },
+  },
+}
+```
+
+Two things are worth knowing about afterwriting itself. It prints a title page
+by default, even for a script with no `Title:` block, so a one-page scene comes
+out as a two-page PDF — pass `print_title_page=false` in `settings` if you do
+not want it. And it **exits 0 even when it fails**: a missing source file prints
+`Cannot open script file` and still reports success to the shell. The plugin
+therefore judges the run by afterwriting's own `Done!` line and by a PDF being
+on disk, and surfaces its last complaint when neither holds, so a failed export
+is never reported as a good one.
+
 ## Commands
 
 | Command | What it does |
@@ -240,6 +300,7 @@ Requires Neovim 0.10+ (inline virtual text). Verify a setup with
 | `:FountainInspector [scene\|notes]` | Toggle the right margin, or switch its mode |
 | `:FountainNotes` | Flip the right margin between the scene inspector and notes |
 | (click a scene) | Send the page to that scene — `<CR>` from the keyboard, `<Esc>` to go back |
+| `:FountainExport[!]` | Compile to PDF with afterwriting (`!` opens it; takes a path or directory) |
 | `:FountainFormat` | Toggle the visual formatting in this buffer (raw view) |
 | `:FountainInspect` | Report how the line under the cursor is being classified and placed |
 
@@ -310,6 +371,19 @@ integration: `FountainStudioZenOpen` and `FountainStudioZenClose`.
   page_lines = 55,     -- lines of text on a printed page
   refresh_delay = 200, -- how long the margins wait for a pause in typing
 
+  export = {
+    command = "afterwriting",
+    args = {},          -- anything to pass before the source, e.g. for npx
+    overwrite = true,   -- afterwriting refuses to replace a PDF without this
+    write = true,       -- save the buffer first; afterwriting reads the file
+    open = false,       -- open the PDF when it is done
+    opener = nil,       -- defaults to xdg-open / open / explorer
+    directory = nil,    -- where PDFs go; nil means beside the script
+    config_file = nil,  -- afterwriting --config
+    fonts = nil,        -- afterwriting --fonts
+    settings = {},      -- afterwriting --setting, e.g. "print_title_page=false"
+  },
+
   ruler = {
     enabled = true,
     width = 5,
@@ -379,6 +453,7 @@ the indent can never show up as a block of a different colour.
 | Where each panel goes | `lua/fountain-studio/layout.lua` |
 | Page ruler | `lua/fountain-studio/ruler.lua` |
 | Right margin, both modes | `lua/fountain-studio/inspector.lua` |
+| PDF export via afterwriting | `lua/fountain-studio/export.lua` |
 | Emphasis, notes, boneyard | `syntax/fountain.vim` |
 
 The parser is line-at-a-time and re-syncs at blank lines, so only the visible
@@ -408,11 +483,13 @@ the window and its tail becomes the indent of the next screen row.
 nvim -l tests/run.lua   # from this directory; exits non-zero on failure
 ```
 
-157 checks covering element classification, geometry, wrapping, the layout math,
+168 checks covering element classification, geometry, wrapping, the layout math,
 the outline's scene detection and page arithmetic, the shared analysis (notes,
-synopses, speeches, page positions), the panel geometry, and an end-to-end pass over
+synopses, speeches, page positions), the panel geometry, the export command line, and an end-to-end pass over
 `examples/sample.fountain` — including a check that writing the buffer leaves
 the file byte-identical, and that a refused `:q` keeps unsaved work on screen.
+Where afterwriting is installed it also compiles a real PDF and checks the
+result; where it is not, that one check reports as skipped rather than failing.
 
 ## What's next
 

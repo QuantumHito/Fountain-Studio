@@ -32,6 +32,19 @@ function M.check()
     health.ok("conceal is available (emphasis markers and forced-element markers can be hidden)")
   end
 
+  local export = require("fountain-studio.export")
+  if export.available() then
+    health.ok(("`%s` found at %s -- :FountainExport will compile to PDF"):format(
+      cfg.export.command,
+      vim.fn.exepath(cfg.export.command)
+    ))
+  else
+    health.warn(("`%s` not found, so :FountainExport cannot run"):format(cfg.export.command), {
+      "npm install -g afterwriting",
+      "Or point `export.command` at the binary.",
+    })
+  end
+
   local detected = vim.filetype.match({ filename = "script.fountain" })
   if detected == "fountain" then
     health.ok("*.fountain files are detected as `fountain`")
