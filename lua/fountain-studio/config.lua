@@ -15,6 +15,20 @@ M.defaults = {
   -- Lines of text on a printed page: what page counts are measured against.
   page_lines = 55,
 
+  -- Compiling to PDF with afterwriting (`npm install -g afterwriting`).
+  export = {
+    command = "afterwriting",
+    args = {},          -- anything to pass before the source, e.g. a node flag
+    overwrite = true,   -- afterwriting refuses to replace a PDF without this
+    write = true,       -- save the buffer first; afterwriting reads the file
+    open = false,       -- open the PDF when it is done (or use :FountainExport!)
+    opener = nil,       -- defaults to xdg-open / open / explorer
+    directory = nil,    -- where PDFs go; nil means beside the script
+    config_file = nil,  -- afterwriting --config
+    fonts = nil,        -- afterwriting --fonts
+    settings = {},      -- afterwriting --setting, e.g. "print_title_page=false"
+  },
+
   -- Filetypes treated as Fountain scripts.
   filetypes = { "fountain" },
 

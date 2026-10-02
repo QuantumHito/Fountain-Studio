@@ -19,6 +19,12 @@ local function eq(got, want, name)
   ok(vim.deep_equal(got, want), name, ("got %s, want %s"):format(vim.inspect(got), vim.inspect(want)))
 end
 
+local skipped = 0
+local function skip(name, why)
+  skipped = skipped + 1
+  io.write(("  skip  %s  -- %s\n"):format(name, why))
+end
+
 local function section(title)
   io.write("\n" .. title .. "\n")
 end
@@ -29,6 +35,7 @@ vim.cmd("syntax on")
 local fountain = require("fountain-studio")
 fountain.setup({})
 
+local export = require("fountain-studio.export")
 local inspector = require("fountain-studio.inspector")
 local outline = require("fountain-studio.outline")
 local ruler = require("fountain-studio.ruler")
@@ -260,6 +267,77 @@ eq(panels(100).ruler, false, "the ruler gives up its columns before the outline 
 eq(panels(100).outline, true, "the outline survives at 100 columns")
 eq(panels(80), { ruler = false, outline = false, inspector = false }, "an 80-column terminal is all page")
 vim.o.columns = columns
+
+--------------------------------------------------------------------------- export
+section("export")
+
+local script_path = "/tmp/a script.fountain"
+eq(export.output_for(script_path), "/tmp/a script.pdf", "the PDF lands beside the script")
+eq(export.output_for(script_path, "/tmp/named.pdf"), "/tmp/named.pdf", "an explicit name is taken as given")
+eq(export.output_for(script_path, "/tmp"), "/tmp/a script.pdf", "a directory keeps the script's name")
+
+eq(export.command(script_path, "/tmp/out.pdf"), {
+  "afterwriting", "--source", script_path, "--pdf", "/tmp/out.pdf", "--overwrite",
+}, "the default command line")
+
+config.setup({
+  export = {
+    overwrite = false,
+    config_file = "/tmp/aw.json",
+    settings = { "print_title_page=false", "double_space_between_scenes=true" },
+  },
+})
+eq(export.command(script_path, "/tmp/out.pdf"), {
+  "afterwriting", "--source", script_path, "--pdf", "/tmp/out.pdf",
+  "--config", "/tmp/aw.json",
+  "--setting", "print_title_page=false",
+  "--setting", "double_space_between_scenes=true",
+}, "config, settings and overwrite are passed through")
+config.setup({})
+
+-- afterwriting exits 0 whatever happens, so failure is read out of its output.
+eq(
+  export.reason("'afterwriting command line interface\nwww: http://afterwriting.com\n\nLoading script: /nope\nCannot open script file /nope", false),
+  "Cannot open script file /nope",
+  "the complaint is picked out of the banner"
+)
+eq(export.reason("", false), "no PDF was written", "silence with no file is still a failure")
+eq(export.reason("", true), "afterwriting did not report finishing", "a file without Done! is not success")
+
+-- The real thing, where afterwriting is installed.
+if export.available() then
+  local work = vim.fn.tempname()
+  vim.fn.mkdir(work, "p")
+  local real = work .. "/a real script.fountain"
+  vim.fn.writefile({ "Title: Real", "", "INT. ROOM - DAY", "", "She exports it.", "", "MAYA", "It worked." }, real)
+
+  local messages = {}
+  local notify = vim.notify
+  vim.notify = function(message)
+    messages[#messages + 1] = message
+  end
+
+  export.run({ bufnr = (function()
+    local bufnr = vim.fn.bufadd(real)
+    vim.fn.bufload(bufnr)
+    return bufnr
+  end)() })
+  vim.wait(20000, function()
+    return #messages > 0
+  end)
+  vim.notify = notify
+
+  local pdf = work .. "/a real script.pdf"
+  local stat = (vim.uv or vim.loop).fs_stat(pdf)
+  ok(stat ~= nil and stat.size > 0, "afterwriting writes a PDF", messages[1])
+  if stat then
+    eq(table.concat(vim.fn.readfile(pdf, "b", 1), ""):sub(1, 5), "%PDF-", "and it is a PDF")
+  end
+  ok((messages[1] or ""):find("failed", 1, true) == nil, "and the run is reported as a success", messages[1])
+  vim.fn.delete(work, "rf")
+else
+  skip("afterwriting writes a PDF", "afterwriting is not installed")
+end
 
 --------------------------------------------------------------------------- integration
 section("integration")
@@ -504,5 +582,5 @@ vim.cmd("FountainZen")
 ok(zen.is_open(), "FountainZen reopens the page")
 zen.close()
 
-io.write(("\n%d passed, %d failed\n"):format(passed, failed))
+io.write(("\n%d passed, %d failed%s\n"):format(passed, failed, skipped > 0 and (", " .. skipped .. " skipped") or ""))
 vim.cmd(failed == 0 and "cq 0" or "cq 1")

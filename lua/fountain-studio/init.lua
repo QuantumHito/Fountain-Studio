@@ -2,6 +2,7 @@
 local config = require("fountain-studio.config")
 local highlight = require("fountain-studio.highlight")
 local parser = require("fountain-studio.parser")
+local export = require("fountain-studio.export")
 local inspector = require("fountain-studio.inspector")
 local outline = require("fountain-studio.outline")
 local ruler = require("fountain-studio.ruler")
@@ -16,6 +17,7 @@ M.zen = zen
 M.outline = outline
 M.ruler = ruler
 M.inspector = inspector
+M.export = export
 M.parser = parser
 
 local did_setup = false
@@ -142,6 +144,18 @@ local function create_commands()
       inspector.set_mode("notes")
     end
   end, { desc = "Swap the right margin between the scene inspector and notes" })
+
+  vim.api.nvim_create_user_command("FountainExport", function(args)
+    export.run({
+      output = vim.trim(args.args or ""),
+      open = args.bang,
+    })
+  end, {
+    nargs = "?",
+    bang = true,
+    complete = "file",
+    desc = "Compile the script to PDF with afterwriting (! opens it)",
+  })
 
   vim.api.nvim_create_user_command("FountainFormat", function()
     local bufnr = vim.api.nvim_get_current_buf()
