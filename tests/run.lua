@@ -231,6 +231,21 @@ eq(study_analysis.characters["MAYA"].last_lnum, 18, "and where they last spoke")
 eq(study_analysis.scenes[1].cast["DANNY"], 1, "the scene cast counts dialogue lines")
 ok(study_analysis.scenes[2].cast["DANNY"] == nil, "a character absent from a scene is not in its cast")
 
+-- Scene lengths have to account for the whole script, or the outline's numbers
+-- and the ruler's page marks tell different stories.
+local accounted, first_slug = 0, nil
+for _, entry in ipairs(study_analysis.scenes) do
+  if not entry.divider then
+    accounted = accounted + entry.lines
+    first_slug = first_slug or entry.lnum
+  end
+end
+eq(
+  accounted + (study_analysis.cumulative[first_slug] or 0),
+  study_analysis.total,
+  "every page line belongs either to a scene or to the matter above the first slug"
+)
+
 eq(script.page_of(study_analysis, 1), 1, "the script opens on page 1")
 eq(select(1, script.scene_at(study_analysis, 11)).lnum, 1, "a line belongs to the scene above it")
 eq(select(1, script.scene_at(study_analysis, 19)).lnum, 16, "and to the next one after that")
@@ -468,6 +483,61 @@ eq(#bold_scenes, 2, "both bolded headings are found")
 eq(bold_scenes[1].text, "I. NEWSROOM - NIGHT", "the outline shows the slug, not the asterisks")
 eq(bold_scenes[2].number, 2, "bolded scenes are numbered in order")
 vim.api.nvim_buf_delete(bold_buf, { force = true })
+
+-- Every panel must listen for the same edits. TextChanged does not fire in
+-- insert mode, so a panel without TextChangedI silently freezes for a whole
+-- writing session -- which is what made the outline's scene lengths disagree
+-- with the ruler's page marks.
+local function change_events(group)
+  local events = {}
+  for _, autocmd in ipairs(vim.api.nvim_get_autocmds({ group = group, buffer = buf })) do
+    events[autocmd.event] = true
+  end
+  return events
+end
+for _, group in ipairs({ "FountainStudioOutline", "FountainStudioRuler", "FountainStudioInspector" }) do
+  local events = change_events(group)
+  ok(events["TextChanged"], group .. " re-measures on an edit in normal mode")
+  ok(events["TextChangedI"], group .. " re-measures while typing in insert mode")
+  ok(events["CursorMoved"] and events["CursorMovedI"], group .. " follows the cursor in either mode")
+end
+
+-- A smoke check that the panel redraws at all after an edit: it reads what the
+-- outline is showing rather than what a fresh scan would say. It is not what
+-- catches the insert-mode gap -- the suite's earlier events can leave a
+-- debounce pending that refreshes this anyway -- the event-list checks above
+-- are, and they fail without TextChangedI.
+local function outline_display()
+  local out = {}
+  for _, line in ipairs(vim.api.nvim_buf_get_lines(outline.buf(), 0, -1, false)) do
+    if line ~= "" then
+      out[#out + 1] = vim.trim(line)
+    end
+  end
+  return table.concat(out, " | ")
+end
+
+local grew = {}
+for index = 1, 70 do
+  grew[index] = "He keeps walking past the shuttered shops, number " .. index .. "."
+end
+local displayed_before = outline_display()
+vim.api.nvim_buf_set_lines(buf, -1, -1, false, grew)
+vim.api.nvim_exec_autocmds("TextChangedI", { buffer = buf })
+vim.wait(2000, function()
+  return outline_display() ~= displayed_before
+end)
+ok(
+  outline_display() ~= displayed_before,
+  "the outline redraws while you are still in insert mode",
+  "still showing: " .. outline_display()
+)
+vim.api.nvim_buf_set_lines(buf, -71, -1, false, {})
+vim.api.nvim_exec_autocmds("TextChanged", { buffer = buf })
+vim.wait(1000, function()
+  return outline_display() == displayed_before
+end)
+vim.bo[buf].modified = false
 
 -- The margins come up with the page.
 ok(ruler.is_open(), "the ruler opens with the page")

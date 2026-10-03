@@ -372,8 +372,11 @@ end
 local function setup_autocmds()
   state.augroup = vim.api.nvim_create_augroup("FountainStudioOutline", { clear = true })
 
-  -- Re-measuring walks the whole script, so it waits for a pause in typing.
-  vim.api.nvim_create_autocmd({ "TextChanged", "InsertLeave" }, {
+  -- Re-measuring walks the whole script, so it waits for a pause in typing --
+  -- but it must listen while you are typing too. TextChanged does not fire in
+  -- insert mode, so without TextChangedI the lengths froze for a whole writing
+  -- session while the ruler went on counting pages, and the two disagreed.
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "InsertLeave" }, {
     group = state.augroup,
     buffer = state.source,
     callback = function()
@@ -381,8 +384,8 @@ local function setup_autocmds()
     end,
   })
 
-  -- Following the cursor is cheap and should feel immediate.
-  vim.api.nvim_create_autocmd("CursorMoved", {
+  -- Following the cursor is cheap and should feel immediate, in either mode.
+  vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
     group = state.augroup,
     buffer = state.source,
     callback = function()

@@ -95,9 +95,14 @@ Slugs are abbreviated (`INT.` → `I.`) to buy columns for the location, and the
 whole thing is dropped rather than squeezed when the margin is narrower than
 `outline.min_width`. Lengths are an estimate from the rendered line count at 55
 lines to the page, not a true pagination pass — close enough to see at a glance
-that a scene is running long. Measured against afterwriting's real output on a
-238-page script it comes in 1.3% low; on a short script the fraction is what to
-read, since a PDF rounds up to whole pages and adds a title page of its own.
+that a scene is running long.
+
+It has been checked against afterwriting's real pagination rather than assumed:
+on a 17-page script, every page break the ruler draws lands within three source
+lines of where afterwriting actually breaks the page, and the error does not
+accumulate down the script. Read the total as a fraction — a PDF rounds up to
+whole pages, and afterwriting adds a title page of its own even when the script
+has no `Title:` block.
 
 Re-measuring walks the whole script, so it waits for a pause in typing: about
 30 ms on a 240-page script, and it never runs mid-keystroke. Following the
@@ -483,7 +488,7 @@ the window and its tail becomes the indent of the next screen row.
 nvim -l tests/run.lua   # from this directory; exits non-zero on failure
 ```
 
-168 checks covering element classification, geometry, wrapping, the layout math,
+178 checks covering element classification, geometry, wrapping, the layout math,
 the outline's scene detection and page arithmetic, the shared analysis (notes,
 synopses, speeches, page positions), the panel geometry, the export command line, and an end-to-end pass over
 `examples/sample.fountain` — including a check that writing the buffer leaves
