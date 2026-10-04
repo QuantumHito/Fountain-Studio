@@ -116,12 +116,27 @@ eq(parser.plain("  **INT. HOUSE - DAY**  "), "INT. HOUSE - DAY", "plain() trims 
 eq(parser.plain("**INT. HOUSE"), "INT. HOUSE", "a half-typed marker still classifies")
 
 --------------------------------------------------------------------------- geometry
+-- The geometry below was read off afterwriting's own PDFs -- Courier 12pt at
+-- 7.2pt a character -- rather than taken from a style guide: both profiles put
+-- 55 rows on a page and indent the cue 20 and the parenthetical 15, and the
+-- action measure is the only thing the paper changes.
+eq(config.get().page_lines, 55, "55 rows to a page")
+eq(config.profiles.usletter.width, 60, "US Letter gives a 60-column measure")
+eq(config.profiles.a4.width, 55, "A4 gives 55")
+
+config.setup({ profile = "a4" })
+eq(config.get().width, 55, "the profile sets the measure")
+config.setup({ profile = "a4", width = 58 })
+eq(config.get().width, 58, "an explicit width still wins")
+config.setup({})
+eq(config.get().width, 60, "and the default is US Letter")
+
 section("geometry")
 
 eq(render.indent_for("action", "He waits.", 60), 0, "action sits on the margin")
 eq(render.indent_for("dialogue", "Go home.", 60), 10, "dialogue indent")
-eq(render.indent_for("parenthetical", "(quietly)", 60), 16, "parenthetical indent")
-eq(render.indent_for("character", "MAYA", 60), 22, "character indent")
+eq(render.indent_for("parenthetical", "(quietly)", 60), 15, "parenthetical indent")
+eq(render.indent_for("character", "MAYA", 60), 20, "character indent")
 eq(render.indent_for("transition", "CUT TO:", 60), 53, "transition is right-aligned")
 ok(render.indent_for("transition", "CUT TO:", 60) + #"CUT TO:" == 60, "transition ends at the right margin")
 -- The `>` and `<` are concealed, so it is the visible text that gets centered.
@@ -246,6 +261,40 @@ eq(
   "every page line belongs either to a scene or to the matter above the first slug"
 )
 
+-- What does and does not take up room on a printed page. Each of these was
+-- checked against afterwriting: a synopsis, a section, a note and a boneyard
+-- all leave its PDF byte-identical, a run of blank lines prints as a single
+-- separator, and `===` starts a new page.
+local function slots(lines)
+  local probe = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(probe, 0, -1, false, lines)
+  local total = script.analyse(probe).total
+  vim.api.nvim_buf_delete(probe, { force = true })
+  return total
+end
+
+local plain = slots({ "INT. ROOM - DAY", "", "She waits." })
+eq(slots({ "INT. ROOM - DAY", "", "= A synopsis.", "", "She waits." }), plain, "a synopsis takes no page space")
+eq(slots({ "# ACT ONE", "", "INT. ROOM - DAY", "", "She waits." }), plain, "nor does a section")
+eq(slots({ "INT. ROOM - DAY", "", "[[a note]]", "", "She waits." }), plain, "nor does a note on its own line")
+eq(slots({ "INT. ROOM - DAY", "", "She waits. [[a note]]" }), plain, "nor a note at the end of a line")
+eq(slots({ "Title: X", "Author: Y", "", "INT. ROOM - DAY", "", "She waits." }), plain,
+  "nor the title block, which prints on a page of its own")
+eq(slots({ "INT. ROOM - DAY", "", "", "", "", "She waits." }), plain, "a run of blank lines is one separator")
+
+local broken = slots({ "INT. A - DAY", "", "One.", "", "===", "", "INT. B - DAY", "", "Two." })
+ok(broken > config.get().page_lines, "=== sends what follows to the next page", broken)
+eq(
+  script.page_of(script.analyse((function()
+    local probe = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(probe, 0, -1, false,
+      { "INT. A - DAY", "", "One.", "", "===", "", "INT. B - DAY", "", "Two." })
+    return probe
+  end)()), 7),
+  2,
+  "and the scene after it opens page 2"
+)
+
 eq(script.page_of(study_analysis, 1), 1, "the script opens on page 1")
 eq(select(1, script.scene_at(study_analysis, 11)).lnum, 1, "a line belongs to the scene above it")
 eq(select(1, script.scene_at(study_analysis, 19)).lnum, 16, "and to the next one after that")
@@ -293,7 +342,8 @@ eq(export.output_for(script_path, "/tmp"), "/tmp/a script.pdf", "a directory kee
 
 eq(export.command(script_path, "/tmp/out.pdf"), {
   "afterwriting", "--source", script_path, "--pdf", "/tmp/out.pdf", "--overwrite",
-}, "the default command line")
+  "--setting", "print_profile=usletter",
+}, "the default command line, on the same paper as the editor")
 
 config.setup({
   export = {
@@ -307,7 +357,20 @@ eq(export.command(script_path, "/tmp/out.pdf"), {
   "--config", "/tmp/aw.json",
   "--setting", "print_title_page=false",
   "--setting", "double_space_between_scenes=true",
+  "--setting", "print_profile=usletter",
 }, "config, settings and overwrite are passed through")
+
+-- A profile the writer chose themselves is not second-guessed.
+config.setup({ export = { settings = { "print_profile=a4" } } })
+local chosen = export.command(script_path, "/tmp/out.pdf")
+eq(
+  #vim.tbl_filter(function(item)
+    return item:find("print_profile=") ~= nil
+  end, chosen),
+  1,
+  "the paper is only named once"
+)
+ok(vim.tbl_contains(chosen, "print_profile=a4"), "and it is the one that was asked for")
 config.setup({})
 
 -- afterwriting exits 0 whatever happens, so failure is read out of its output.
@@ -397,8 +460,8 @@ local function hl_of(text)
   return mark and mark.hl_group or nil
 end
 
-eq(indent_of("MAYA"), 22, "MAYA is indented to the character margin")
-eq(indent_of("(not looking up)"), 16, "parenthetical is indented")
+eq(indent_of("MAYA"), 20, "MAYA is indented to the character margin")
+eq(indent_of("(not looking up)"), 15, "parenthetical is indented")
 eq(indent_of("Whatever it is, the answer is no."), 10, "dialogue is indented")
 eq(indent_of("CUT TO:"), 53, "CUT TO: is right-aligned")
 eq(indent_of("The buzzing stops. A beat. Then the office door opens."), 0, "action stays on the margin")

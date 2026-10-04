@@ -32,7 +32,17 @@ M.defaults = {
   -- Filetypes treated as Fountain scripts.
   filetypes = { "fountain" },
 
-  -- Width of the action measure, in columns. 60 = 6.0" at 10 cpi.
+  -- Paper. afterwriting's two print profiles differ in the action measure, and
+  -- the editor has to agree with whatever the PDF will do, or the page ruler
+  -- drifts against it. Measured out of afterwriting's own output:
+  --   usletter  612x792pt, 60-column measure  (the US industry standard)
+  --   a4        595x842pt, 55-column measure  -- afterwriting's own default
+  -- Both put 55 rows on a page. :FountainExport passes the matching
+  -- print_profile so that what you see is what you compile.
+  profile = "usletter",
+
+  -- Width of the action measure, in columns. Taken from `profile` unless set
+  -- here explicitly. 60 = 6.0" at 10 characters per inch.
   width = 60,
 
   -- If the terminal cannot fit `width` plus margins, shrink to what fits but
@@ -48,11 +58,12 @@ M.defaults = {
   --   dialogue      2.5" from page edge -> 10
   --   parenthetical 3.1"                -> 16
   --   character     3.7"                -> 22
+  -- Measured off afterwriting's output, which is the same in both profiles.
   indents = {
     action = 0,
     scene_heading = 0,
-    character = 22,
-    parenthetical = 16,
+    character = 20,
+    parenthetical = 15,
     dialogue = 10,
     lyrics = 10,
     section = 0,
@@ -208,8 +219,23 @@ M.defaults = {
 
 M.options = vim.deepcopy(M.defaults)
 
+--- The measure each of afterwriting's print profiles actually uses, read off
+--- its own PDFs rather than assumed.
+M.profiles = {
+  usletter = { width = 60 },
+  a4 = { width = 55 },
+}
+
 function M.setup(opts)
-  M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts or {})
+  opts = opts or {}
+  M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
+
+  -- The profile sets the measure unless the caller named one outright.
+  local profile = M.profiles[M.options.profile]
+  if profile and opts.width == nil then
+    M.options.width = profile.width
+  end
+
   return M.options
 end
 

@@ -81,9 +81,13 @@ function M.scene_panel(analysis, lnum, width)
   local cfg = config.get()
   local display, highlights = {}, {}
 
+  -- Index the highlight by the row it belongs to. Appending with
+  -- `highlights[#highlights + 1]` loses its place the moment a row has no
+  -- group -- assigning nil appends nothing -- and every group after a blank
+  -- separator then lands a row early.
   local function add(text, group)
     display[#display + 1] = text
-    highlights[#highlights + 1] = group
+    highlights[#display] = group
   end
   local function section(title)
     if #display > 0 then
@@ -275,8 +279,11 @@ function M.refresh(opts)
   vim.bo[state.buf].modifiable = false
 
   vim.api.nvim_buf_clear_namespace(state.buf, M.ns, 0, -1)
-  for index, group in pairs(highlights) do
-    if group and display[index] and display[index] ~= "" then
+  -- Walk the rows, not the highlight table: it has holes wherever a row has no
+  -- group of its own.
+  for index in ipairs(display) do
+    local group = highlights[index]
+    if group and display[index] ~= "" then
       pcall(vim.api.nvim_buf_set_extmark, state.buf, M.ns, index - 1, 0, {
         end_row = index - 1,
         end_col = #display[index],

@@ -50,8 +50,18 @@ function M.command(source, output)
   if cfg.fonts and cfg.fonts ~= "" then
     vim.list_extend(argv, { "--fonts", vim.fn.expand(cfg.fonts) })
   end
+  local chose_profile = false
   for _, setting in ipairs(cfg.settings or {}) do
     vim.list_extend(argv, { "--setting", setting })
+    chose_profile = chose_profile or setting:find("^print_profile=") ~= nil
+  end
+
+  -- Keep the PDF on the same paper as the page on screen. afterwriting
+  -- defaults to A4, whose action measure is five columns narrower than US
+  -- Letter's, which would set the ruler drifting against the real pagination.
+  local profile = config.get().profile
+  if not chose_profile and profile and profile ~= "" then
+    vim.list_extend(argv, { "--setting", "print_profile=" .. profile })
   end
   return argv
 end

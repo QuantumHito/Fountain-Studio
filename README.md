@@ -172,26 +172,32 @@ SCENES     p5 · 241 2/8
 A US Letter page set in 12pt Courier is 10 characters per inch. With the
 standard 1.5" left and 1.0" right margins that leaves a 6.0" measure, so:
 
-| Element | Page position | Columns |
-|---|---|---|
-| Action, scene headings | 1.5" – 7.5" | indent 0, width **60** |
-| Dialogue | 2.5" – 6.0" | indent 10, width 35 |
-| Parenthetical | 3.1" – 5.6" | indent 16, width 25 |
-| Character cue | 3.7" | indent 22 |
-| Transition | flush right | ends at column 60 |
+| Element | Columns |
+|---|---|
+| Action, scene headings | indent 0, measure **60** |
+| Dialogue | indent 10, measure 35 |
+| Parenthetical | indent 15, measure 25 |
+| Character cue | indent 20 |
+| Transition | flush right |
 
-Action paragraphs therefore break exactly where they break on the page, and so
-does dialogue: wrapped dialogue keeps its own 35-column measure instead of
-running to the page edge, so paragraph shape is what it will be in the PDF.
+Those numbers were read off afterwriting's own PDFs rather than taken from a
+style guide — Courier 12pt is 7.2pt a character, so the margins can be measured
+directly — and so was the 55 rows that fit on a page.
 
-**Secondary slug lines** — `MOMENTS LATER`, `BACK TO SCENE`, `ANGLE ON` — mark
-a jump in time or framing inside a scene. Fountain has no element for them, so
-plain rules read one as a *character cue* and turn the action under it into
-dialogue; forcing it with a leading `.` makes it a whole new scene instead.
-Neither is what the line means, so they are their own element: placed at the
-action margin, headed but not bold, and left out of the outline, because they do
-not start a scene. The list in `mini_slugs` is configurable — empty it for
-Fountain's plain rules.
+**Paper matters.** afterwriting ships two print profiles, and they differ in the
+action measure: US Letter gives 60 columns, A4 gives 55. Both put 55 rows on a
+page, and both indent the cue 20 and the parenthetical 15. The editor has to
+agree with whatever the PDF will do, or the page ruler drifts against it, so
+`profile` sets the measure and `:FountainExport` passes the matching
+`print_profile`:
+
+```lua
+opts = { profile = "usletter" }  -- or "a4"; afterwriting's own default is a4
+```
+
+Action paragraphs therefore break where they break on the page, and so does
+dialogue: wrapped dialogue keeps its own 35-column measure instead of running to
+the page edge, so paragraph shape is what it will be in the PDF.
 
 Emphasis is markup, not part of the element: `**INT. NEWSROOM - NIGHT**`,
 `*CUT TO:*` and `**MAYA**` are read as a scene heading, a transition and a
@@ -207,9 +213,37 @@ element carrying hidden characters — a bolded `**CUT TO:**` — is therefore
 placed as far right as it can go *without wrapping*, which leaves it a few
 columns short of the margin rather than broken across two rows.
 
-If the terminal is too narrow for a 60-column page, the whole page — indents and
+**Secondary slug lines** — `MOMENTS LATER`, `BACK TO SCENE`, `ANGLE ON` — mark
+a jump in time or framing inside a scene. Fountain has no element for them, so
+plain rules read one as a *character cue* and turn the action under it into
+dialogue; forcing it with a leading `.` makes it a whole new scene instead.
+Neither is what the line means, so they are their own element: placed at the
+action margin, headed but not bold, and left out of the outline, because they do
+not start a scene. The list in `mini_slugs` is configurable — empty it for
+Fountain's plain rules.
+
+If the terminal is too narrow for a full page, the whole page — indents and
 measures included — is scaled down proportionally rather than clipped, and a
 short warning is issued once.
+
+### What takes up a page, and how close the count is
+
+Synopses (`=`), sections (`#`), notes (`[[ ]]`) and the title block do not print,
+so they take up no page space: afterwriting's PDF is byte-identical with and
+without them, and the title block prints on a page of its own. A run of blank
+lines prints as a single separator, however many you leave, and `===` starts a
+new page. All of that is checked in the tests.
+
+What remains is afterwriting's pagination: it will not split certain elements
+across a page boundary, so a real page often ends a few rows early. The counts
+here do not model that, which makes them read slightly short — about 5% on the
+scripts measured — and a ruler mark can sit a line or two from the real break.
+Measured against afterwriting on a 17-page script, each mark lands within about
+five source lines of where the page really breaks. Read a total as a fraction:
+a PDF rounds up to whole pages, and afterwriting adds a title page of its own.
+
+Boneyards (`/* ... */`) are not modelled yet — text inside one still counts
+towards the page, though it does not print.
 
 ## Install
 
@@ -334,7 +368,7 @@ integration: `FountainStudioZenOpen` and `FountainStudioZenClose`.
 
   indents = {
     action = 0, scene_heading = 0,
-    dialogue = 10, parenthetical = 16, character = 22,
+    dialogue = 10, parenthetical = 15, character = 20,
     lyrics = 10, section = 0, synopsis = 0, page_break = 0, title_page = 0,
   },
   measures = { -- how wide a block gets before it wraps
@@ -373,7 +407,8 @@ integration: `FountainStudioZenOpen` and `FountainStudioZenClose`.
     winhighlight = "NormalFloat:Normal,FloatBorder:Normal,EndOfBuffer:Normal",
   },
 
-  page_lines = 55,     -- lines of text on a printed page
+  profile = "usletter", -- paper: "usletter" (60-column measure) or "a4" (55)
+  page_lines = 55,     -- rows of text on a printed page
   refresh_delay = 200, -- how long the margins wait for a pause in typing
 
   export = {
@@ -488,7 +523,7 @@ the window and its tail becomes the indent of the next screen row.
 nvim -l tests/run.lua   # from this directory; exits non-zero on failure
 ```
 
-178 checks covering element classification, geometry, wrapping, the layout math,
+195 checks covering element classification, geometry, wrapping, the layout math,
 the outline's scene detection and page arithmetic, the shared analysis (notes,
 synopses, speeches, page positions), the panel geometry, the export command line, and an end-to-end pass over
 `examples/sample.fountain` — including a check that writing the buffer leaves

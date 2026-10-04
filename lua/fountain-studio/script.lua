@@ -32,14 +32,17 @@ end
 --- Pull `[[ ... ]]` notes out of a line, continuing one left open above it.
 --- The column of the opening `[[` is kept so the notes column can sit beside
 --- the row the note actually appears on, not the row its line starts on.
+---
+--- Returns the line with the notes taken out: notes do not print, so that
+--- remainder is what the page arithmetic should measure.
 local function collect_notes(state, notes, lnum, line)
-  local pos = 1
+  local pos, kept = 1, {}
   while pos <= #line do
     if state.open then
       local close_start, close_end = line:find("%]%]", pos)
       if not close_start then
         state.text[#state.text + 1] = line:sub(pos)
-        return
+        return ""
       end
       state.text[#state.text + 1] = line:sub(pos, close_start - 1)
       local text = vim.trim(table.concat(state.text, " "):gsub("%s+", " "))
@@ -51,13 +54,26 @@ local function collect_notes(state, notes, lnum, line)
     else
       local open_start, open_end = line:find("%[%[", pos)
       if not open_start then
-        return
+        kept[#kept + 1] = line:sub(pos)
+        break
       end
+      kept[#kept + 1] = line:sub(pos, open_start - 1)
       state.open, state.lnum, state.col, state.text = true, lnum, open_start, {}
       pos = open_end + 1
     end
   end
+  return table.concat(kept)
 end
+
+-- Elements Fountain keeps out of the printed script. Checked against
+-- afterwriting: a synopsis, a section, a note and a boneyard all leave the PDF
+-- byte-identical, and the title block prints on a title page of its own rather
+-- than in the body. None of them may take up page space.
+local UNPRINTED = {
+  synopsis = true,
+  section = true,
+  title_page = true,
+}
 
 local function walk(bufnr)
   local cfg = config.get()
@@ -80,15 +96,35 @@ local function walk(bufnr)
 
   local note_state = { open = false, text = {}, lnum = nil, col = 1 }
   local scene, speech, number = nil, nil, 0
+  -- Whether the last thing that reached the page was a blank. A run of blank
+  -- lines prints as a single separator -- four blanks and one blank give
+  -- afterwriting byte-identical output -- and metadata between two blanks
+  -- leaves just the one.
+  local pending_blank = true
 
   for i, line in ipairs(lines) do
     local kind = types[i]
     result.cumulative[i] = result.total
-    local height = page_lines_for(kind, line, cfg.width)
+    local printable = collect_notes(note_state, result.notes, i, line)
+
+    local height
+    if UNPRINTED[kind] or vim.trim(printable) == "" and kind ~= "blank" then
+      height = 0 -- invisible in print; the blank around it must not double up
+    elseif kind == "blank" then
+      height = pending_blank and 0 or 1
+      pending_blank = true
+    elseif kind == "page_break" then
+      -- `===` sends what follows to the top of the next page.
+      local into = result.total % cfg.page_lines
+      height = into > 0 and (cfg.page_lines - into) or 0
+      pending_blank = true
+    else
+      height = page_lines_for(kind, printable, cfg.width)
+      pending_blank = false
+    end
+
     result.heights[i] = height
     result.total = result.total + height
-
-    collect_notes(note_state, result.notes, i, line)
 
     if kind == "scene_heading" then
       number = number + 1
